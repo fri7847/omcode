@@ -969,6 +969,19 @@ test("commands: parseVerify + formatPanel", async () => {
   assert.match(out, /2 agents cross-checked · 5 tool calls/);
 });
 
+test("applier: startLine resolves EXACT duplicate matches (not just fuzzy)", () => {
+  // regression: the ambiguity error told users to pass startLine, but the exact
+  // path ignored it and rejected anyway. Now it picks the nearest occurrence.
+  const content = "x = 1;\ny = 2;\nx = 1;\n";
+  const r = applyEdit({ content, search: "x = 1;", replace: "x = 9;", startLine: 3 });
+  assert.equal(r.ok, true);
+  assert.ok(r.ok && r.content === "x = 1;\ny = 2;\nx = 9;\n"); // 3rd occurrence, not 1st
+  // no hint → still a helpful ambiguity error
+  const amb = applyEdit({ content, search: "x = 1;", replace: "x = 9;" });
+  assert.equal(amb.ok, false);
+  assert.ok(!amb.ok && /multiple locations/.test(amb.error));
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });

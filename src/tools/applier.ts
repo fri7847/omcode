@@ -66,6 +66,11 @@ export function applyEdit(req: ApplyRequest): ApplyResult {
     return splice(lines, exact[0]!, searchLines.length, replaceLines, eol, "exact", 1);
   }
   if (exact.length > 1) {
+    // A startLine hint disambiguates duplicates (as the ambiguity message
+    // itself instructs) — pick the occurrence nearest the hint.
+    if (req.startLine !== undefined) {
+      return splice(lines, nearest(exact, req.startLine), searchLines.length, replaceLines, eol, "exact", 1);
+    }
     return ambiguityError(exact, searchLines.length, "exactly", lines);
   }
 
@@ -75,6 +80,9 @@ export function applyEdit(req: ApplyRequest): ApplyResult {
     return splice(lines, norm[0]!, searchLines.length, replaceLines, eol, "normalized", 1);
   }
   if (norm.length > 1) {
+    if (req.startLine !== undefined) {
+      return splice(lines, nearest(norm, req.startLine), searchLines.length, replaceLines, eol, "normalized", 1);
+    }
     return ambiguityError(norm, searchLines.length, "after whitespace normalization", lines);
   }
 
@@ -153,6 +161,12 @@ function findWindows(
     hits.push(i);
   }
   return hits;
+}
+
+/** The index closest to a 1-based startLine hint (for duplicate resolution). */
+function nearest(indices: number[], startLine: number): number {
+  const center = startLine - 1;
+  return indices.reduce((best, i) => (Math.abs(i - center) < Math.abs(best - center) ? i : best), indices[0]!);
 }
 
 /** Middle-out order around the hint, then the rest of the file. */

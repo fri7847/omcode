@@ -12,7 +12,8 @@
   "scripts": {
     "dev": "tsx src/cli/repl.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/run.ts"
+    "test": "tsx test/run.ts",
+    "bench": "tsx bench/harness.ts"
   },
   "dependencies": {
     "fast-glob": "^3.3.3",
