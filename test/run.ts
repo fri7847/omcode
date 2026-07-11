@@ -733,6 +733,22 @@ test("commands: sessionDiff renders changes and reports when clean", async () =>
   assert.equal(await loadProjectContext(dir), "PROJECT-GUIDE");
 });
 
+// ---- /lint /test ----
+test("detectTest: finds an npm test script, else null", async () => {
+  const { detectTest } = await import("../src/tools/diagnostics.js");
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-dt-"));
+  assert.equal(detectTest(dir), null);
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { test: "node t.js" } }), "utf8");
+  const plan = detectTest(dir);
+  assert.ok(plan && plan.label === "npm test");
+});
+test("commands: lint/test report 'none' outside a recognized project", async () => {
+  const { lintProject, testProject } = await import("../src/cli/commands.js");
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-lt-"));
+  assert.match(await lintProject(dir), /no recognized project type/);
+  assert.match(await testProject(dir), /no test command detected/);
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });

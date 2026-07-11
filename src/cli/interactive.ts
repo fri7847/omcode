@@ -12,7 +12,7 @@ import type { Renderer } from "./render.js";
 import type { AgentLoop, LoopUI, PermissionDecision } from "../core/loop.js";
 import type { ToolCall } from "../model/provider.js";
 import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
-import { INIT_PROMPT, clearConversation, compactNow, sessionDiff } from "./commands.js";
+import { INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject } from "./commands.js";
 
 const { accent, dim } = style;
 
@@ -220,6 +220,8 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
     if (input === "/compact") { render.notice(await compactNow(loop)); continue; }
     if (input === "/cost") { render.cost(); continue; }
     if (input === "/diff") { stdout.write("\n" + (await sessionDiff(deps.checkpoints, deps.cwd, true)) + "\n"); continue; }
+    if (input === "/lint") { render.notice("linting…"); stdout.write("\n" + (await lintProject(deps.cwd)) + "\n"); continue; }
+    if (input === "/test") { render.notice("running tests…"); stdout.write("\n" + (await testProject(deps.cwd)) + "\n"); continue; }
     if (input === "/undo") {
       const restored = await deps.checkpoints.undoLastTurn();
       render.notice(restored.length ? `restored: ${restored.map((p) => p.split(/[\\/]/).pop()).join(", ")}` : "되돌릴 변경 없음");

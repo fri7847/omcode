@@ -32,7 +32,7 @@ import { FixedScreen } from "./screen.js";
 import { runFixed } from "./interactive.js";
 import { parseAgentMode } from "../core/agent-mode.js";
 import { contextWindowWarning, detectNvidiaVramMiB } from "../model/runtime.js";
-import { INIT_PROMPT, clearConversation, compactNow, sessionDiff, loadProjectContext } from "./commands.js";
+import { INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject, loadProjectContext } from "./commands.js";
 
 interface MenuItem {
   label: string;
@@ -361,6 +361,8 @@ async function main(): Promise<void> {
     if (input === "/compact") { render.notice(await compactNow(loop)); continue; }
     if (input === "/cost") { render.cost(); continue; }
     if (input === "/diff") { stdout.write("\n" + (await sessionDiff(checkpoints, cwd, Boolean(stdout.isTTY))) + "\n"); continue; }
+    if (input === "/lint") { render.notice("linting…"); stdout.write("\n" + (await lintProject(cwd)) + "\n"); continue; }
+    if (input === "/test") { render.notice("running tests…"); stdout.write("\n" + (await testProject(cwd)) + "\n"); continue; }
     if (input === "/model") {
       await pickModel(await provider.listModels());
       continue;

@@ -243,6 +243,8 @@ export class Renderer {
         cmd("/clear", "대화 초기화 (모델·모드 유지)") +
         cmd("/cost", "이번 세션 토큰·컨텍스트 사용량") +
         cmd("/diff", "이번 세션에 바뀐 파일 전체 diff") +
+        cmd("/lint", "프로젝트 언어 검사기 실행 (tsc/go vet/ruff)") +
+        cmd("/test", "프로젝트 테스트 명령 실행") +
         cmd("/undo", "마지막 턴이 바꾼 파일 되돌리기") +
         cmd("/help", "이 도움말") +
         cmd("/exit", "종료") +

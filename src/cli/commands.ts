@@ -6,6 +6,7 @@
 import { readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { renderDiff } from "./diff.js";
+import { projectDiagnostics, projectTest } from "../tools/diagnostics.js";
 import type { AgentLoop } from "../core/loop.js";
 
 /** Just the slice of CheckpointStore /diff needs (keeps the frontends decoupled). */
@@ -59,6 +60,21 @@ export async function sessionDiff(
     else blocks.push(renderDiff(before, after, { color, indent: "   ", path: rel }));
   }
   return blocks.length ? blocks.join("\n\n") : "no net changes this session";
+}
+
+/** Run the project's language checker on demand (/lint). Deterministic, no model. */
+export async function lintProject(cwd: string): Promise<string> {
+  const { language, failure } = await projectDiagnostics(cwd);
+  if (language === "none") return "no recognized project type to lint (tsconfig.json / go.mod / Python)";
+  return failure ?? `${language}: clean — no issues`;
+}
+
+/** Run the project's test command on demand (/test). Output tail is capped. */
+export async function testProject(cwd: string): Promise<string> {
+  const r = await projectTest(cwd);
+  if (!r) return "no test command detected (package.json test script / go.mod / Cargo.toml / pytest)";
+  const tail = r.output.trim().split("\n").slice(-40).join("\n");
+  return `${r.ok ? "✓ passed" : "✗ failed"} · ${r.label}\n${tail || "(no output)"}`;
 }
 
 /** Read the project's agent guide (AGENTS.md preferred) to inject into the system

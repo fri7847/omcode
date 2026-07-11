@@ -4,7 +4,7 @@
 // is gated on its tool being installed — a missing toolchain is silently
 // skipped (returns undefined), never an error.
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { z } from "zod";
@@ -20,14 +20,24 @@ interface RunResult {
   missing: boolean;
 }
 
-function run(command: string, args: string[], cwd: string): Promise<RunResult> {
+function run(command: string, args: string[], cwd: string, timeoutMs = TIMEOUT_MS): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { cwd, shell: false, windowsHide: true });
+    // Windows rejects spawning .cmd/.bat with shell:false (EINVAL, thrown
+    // synchronously) — npm.cmd needs a shell. Native binaries stay shell-free.
+    const shell = /\.(cmd|bat)$/i.test(command);
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, args, { cwd, shell, windowsHide: true });
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      resolve({ code: 1, output: e.message, missing: e.code === "ENOENT" });
+      return;
+    }
     let output = "";
     const add = (chunk: Buffer) => { output += chunk.toString("utf8"); };
-    child.stdout.on("data", add);
-    child.stderr.on("data", add);
-    const timer = setTimeout(() => child.kill(), TIMEOUT_MS);
+    child.stdout?.on("data", add);
+    child.stderr?.on("data", add);
+    const timer = setTimeout(() => child.kill(), timeoutMs);
     child.on("error", (err: NodeJS.ErrnoException) => {
       clearTimeout(timer);
       resolve({ code: 1, output: err.message, missing: err.code === "ENOENT" });
@@ -85,6 +95,45 @@ export async function projectDiagnostics(cwd: string): Promise<Diagnostics> {
 /** Post-edit hook shape: return the failure string, or undefined when clean. */
 export async function postEditDiagnostics(cwd: string): Promise<string | undefined> {
   return (await projectDiagnostics(cwd)).failure;
+}
+
+// ---- project test runner (/test) ----
+
+interface TestPlan {
+  label: string;
+  cmd: string;
+  args: string[];
+}
+
+/** Detect the project's test command from its manifest, or null if none fits. */
+export function detectTest(cwd: string): TestPlan | null {
+  const pkgPath = join(cwd, "package.json");
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { scripts?: Record<string, string> };
+      if (pkg.scripts?.["test"]) {
+        const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+        return { label: "npm test", cmd: npm, args: ["test", "--silent"] };
+      }
+    } catch {
+      // malformed package.json — fall through to the other toolchains
+    }
+  }
+  if (existsSync(join(cwd, "go.mod"))) return { label: "go test ./...", cmd: "go", args: ["test", "./..."] };
+  if (existsSync(join(cwd, "Cargo.toml"))) return { label: "cargo test", cmd: "cargo", args: ["test"] };
+  if (existsSync(join(cwd, "pyproject.toml")) || hasPython(cwd)) return { label: "pytest", cmd: "pytest", args: [] };
+  return null;
+}
+
+/** Run the detected test command. null = no test command; otherwise pass/fail + output. */
+export async function projectTest(cwd: string): Promise<{ label: string; ok: boolean; output: string } | null> {
+  const plan = detectTest(cwd);
+  if (!plan) return null;
+  const r = await run(plan.cmd, plan.args, cwd, 180_000);
+  if (r.missing) {
+    return { label: plan.label, ok: false, output: `${plan.cmd} not found — is the toolchain installed and on PATH?` };
+  }
+  return { label: plan.label, ok: r.code === 0, output: r.output };
 }
 
 const schema = z.object({});

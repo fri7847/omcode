@@ -72,6 +72,8 @@ In-session commands:
 | `/clear` | reset the conversation (model/mode kept) |
 | `/cost` | session token + context usage |
 | `/diff` | combined diff of every file changed this session |
+| `/lint` | run the project's language checker (tsc / go vet / ruff) |
+| `/test` | run the project's test command (npm/go/cargo/pytest) |
 | `/undo` | revert the files the last turn changed |
 | `/help` · `/exit` | help · quit |
 
