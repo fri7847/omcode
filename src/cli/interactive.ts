@@ -14,7 +14,7 @@ import type { ToolCall } from "../model/provider.js";
 import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
 import {
   INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject,
-  statusText, doctorText, configText, setConfig, permissions, mcpStatusText, type EnvInfo,
+  statusText, doctorText, configText, setConfig, permissions, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
 } from "./commands.js";
 import type { McpServerStatus } from "../tools/mcp.js";
 
@@ -248,6 +248,11 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
     }
     if (input.startsWith("/permissions")) { stdout.write("\n" + permissions(loop, input.split(/\s+/).slice(1)) + "\n"); continue; }
     if (input === "/mcp") { stdout.write("\n" + mcpStatusText(deps.mcpStatus()) + "\n"); continue; }
+    if (input.startsWith("/agents")) {
+      const [, sub, name] = input.split(/\s+/);
+      stdout.write("\n" + (sub === "new" ? newAgentScaffold(deps.cwd, name ?? "") : agentsText(deps.cwd)) + "\n");
+      continue;
+    }
     if (input === "/new") { const s = deps.newSessionLog(); loop.newSession(s); sessionFile = s.file; render.notice("new session → " + s.file); continue; }
     if (input === "/undo") {
       const restored = await deps.checkpoints.undoLastTurn();

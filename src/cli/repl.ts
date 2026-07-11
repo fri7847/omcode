@@ -23,6 +23,8 @@ import { repoMapTool } from "../tools/repo-map.js";
 import { diagnosticsTool, postEditDiagnostics } from "../tools/diagnostics.js";
 import { webFetchTool } from "../tools/web-fetch.js";
 import { makeTaskTool } from "../tools/task.js";
+import { makeAgentTool } from "../tools/agent.js";
+import { loadAgents } from "../core/agents.js";
 import { makeEditTool, newEditStats } from "../tools/edit.js";
 import { writeTool } from "../tools/write.js";
 import { detectShell, makeShellTool } from "../tools/shell.js";
@@ -35,7 +37,7 @@ import { parseAgentMode } from "../core/agent-mode.js";
 import { contextWindowWarning, detectNvidiaVramMiB } from "../model/runtime.js";
 import {
   INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject, loadProjectContext,
-  statusText, doctorText, configText, setConfig, permissions, mcpStatusText, type EnvInfo,
+  statusText, doctorText, configText, setConfig, permissions, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
 } from "./commands.js";
 
 interface MenuItem {
@@ -293,6 +295,42 @@ async function main(): Promise<void> {
     return `Isolated subtask report (${stats.toolCalls} tool calls):\n${report || "No final report was produced."}${suffix}`;
   }));
 
+  // User-defined sub-agents → the run_agent tool (only if any exist, so projects
+  // without agents pay no schema cost). Each runs isolated + read-only, like task,
+  // but with the agent's own role prompt, read-only tool subset, and model.
+  const agents = loadAgents(cwd);
+  if (agents.length > 0) {
+    registry.register(makeAgentTool(agents, async (def, task) => {
+      const subRegistry = new ToolRegistry();
+      for (const t of registry.list()) {
+        if (!t.readOnly || t.name === "run_agent" || t.name === "task") continue; // no recursion
+        if (def.tools && !def.tools.includes(t.name)) continue;
+        subRegistry.register(t);
+      }
+      let report = "";
+      const notices: string[] = [];
+      const sub = new AgentLoop(
+        provider,
+        subRegistry,
+        { model: def.model ?? loopConfig.model, numCtx: NUM_CTX, maxToolCallsPerTurn: 12, think: THINK, mode: "architect" },
+        {
+          onAssistantText: (text) => { report = text; },
+          onToolStart() {}, onToolEnd() {},
+          onNotice: (notice) => notices.push(notice),
+          askPermission: async () => "no",
+        },
+        { append() {} },
+        { cwd },
+        buildSystemPrompt(cwd, shell.label, "architect") + `\n\n# Your role\n${def.prompt}`,
+      );
+      const stats = await sub.runTurn(
+        `${task}\n\nReturn concise, actionable findings with exact file paths and symbols. Do not propose edits you did not verify.`,
+      );
+      const suffix = notices.length ? `\nHarness notes: ${notices.join("; ")}` : "";
+      return `Agent "${def.name}" report (${stats.toolCalls} tool calls):\n${report || "No report produced."}${suffix}`;
+    }));
+  }
+
   // Connect configured MCP servers and bridge their tools into the registry
   // (no-op with no config). Best-effort: failures are reported, never fatal.
   const mcp = await connectMcpServers(loadConfig().mcpServers ?? {}, registry);
@@ -409,6 +447,11 @@ async function main(): Promise<void> {
     }
     if (input.startsWith("/permissions")) { stdout.write("\n" + permissions(loop, input.split(/\s+/).slice(1)) + "\n"); continue; }
     if (input === "/mcp") { stdout.write("\n" + mcpStatusText(mcp.status()) + "\n"); continue; }
+    if (input.startsWith("/agents")) {
+      const [, sub, name] = input.split(/\s+/);
+      stdout.write("\n" + (sub === "new" ? newAgentScaffold(cwd, name ?? "") : agentsText(cwd)) + "\n");
+      continue;
+    }
     if (input === "/new") { session = new SessionLog(); loop.newSession(session); stdout.write(dim(`  ✦ new session → ${session.file}\n\n`)); continue; }
     if (input === "/model") {
       await pickModel(await provider.listModels());

@@ -80,6 +80,7 @@ In-session commands:
 | `/config` | show config, or `/config <key> <value>` to persist one |
 | `/permissions` | list tool permissions, or `allow`/`ask <tool>` for the session |
 | `/mcp` | connected MCP servers and their discovered tools |
+| `/agents` | list sub-agents, or `/agents new <name>` to scaffold one |
 | `/undo` | revert the files the last turn changed |
 | `/help` · `/exit` | help · quit |
 
@@ -98,6 +99,22 @@ OMcode can connect to [MCP](https://modelcontextprotocol.io) servers over stdio 
 ```
 
 Failed servers are reported and skipped — they never block startup.
+
+### Sub-agents
+
+Define specialized, reusable agents in `.omcode/agents/<name>.md` (project) or `~/.omcode/agents/` (global). Each is a frontmatter block plus a role prompt:
+
+```md
+---
+name: security-reviewer
+description: Reviews code for vulnerabilities. Use when the user asks for a security review or when touching auth/crypto.
+tools: read, grep, glob, repo_map     # optional; default = all read-only tools
+model: qwen3-coder:480b                # optional; default = the session model
+---
+You are a security reviewer. Analyze the given code for vulnerabilities and report findings with exact file:line references.
+```
+
+Scaffold one with `/agents new <name>`, list them with `/agents`. Each runs in an isolated, read-only context and returns a compact report. The model calls the `run_agent` tool on its own when an agent's description fits the work — or you can just ask for one by name. (Read-only by design, so an autonomous delegation can never make an unapproved change.)
 
 > **Hardware note:** on an 8 GB GPU (e.g. RTX 3070 Ti), an 8B model at `num_ctx=8192` is the practical local sweet spot; larger contexts spill to CPU and slow to a crawl. On local NVIDIA hosts OMcode probes VRAM and warns about unsafe context settings without overriding an explicit setting. For serious work, use Ollama Cloud.
 

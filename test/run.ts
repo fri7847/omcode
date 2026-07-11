@@ -3,7 +3,7 @@
 // they must be provably correct before we blame any model.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import os from "node:os";
 import { z } from "zod";
@@ -820,6 +820,43 @@ test("mcp: a server that fails to start is reported, not thrown", async () => {
   assert.equal(st[0]!.ok, false);
   assert.equal(reg.list().length, 0);
   mgr.close();
+});
+
+// ---- /agents: definitions + run_agent tool ----
+test("agents: parseAgentFile reads frontmatter + role body", async () => {
+  const { parseAgentFile } = await import("../src/core/agents.js");
+  const def = parseAgentFile(
+    "---\nname: sec\ndescription: security review\ntools: read, grep\nmodel: big:1\n---\nYou are the sec agent.",
+    "x.md",
+  );
+  assert.ok(def);
+  assert.equal(def!.name, "sec");
+  assert.deepEqual(def!.tools, ["read", "grep"]);
+  assert.equal(def!.model, "big:1");
+  assert.match(def!.prompt, /sec agent/);
+  // missing required fields → null
+  assert.equal(parseAgentFile("---\nname: x\n---\nbody", "x.md"), null);
+});
+test("agents: loadAgents reads *.md from the project agents dir", async () => {
+  const { loadAgents } = await import("../src/core/agents.js");
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-ag-"));
+  const adir = join(dir, ".omcode", "agents");
+  mkdirSync(adir, { recursive: true });
+  writeFileSync(join(adir, "planner.md"), "---\nname: planner\ndescription: plans work\n---\nPlan.", "utf8");
+  const agents = loadAgents(dir);
+  assert.equal(agents.length, 1);
+  assert.equal(agents[0]!.name, "planner");
+});
+test("agents: run_agent tool lists agents, dispatches case-insensitively, guards unknown", async () => {
+  const { makeAgentTool } = await import("../src/tools/agent.js");
+  const tool = makeAgentTool(
+    [{ name: "sec", description: "security review", prompt: "role", source: "x" }],
+    async (def, task) => `ran ${def.name}: ${task}`,
+  );
+  assert.match(tool.description, /sec: security review/);
+  assert.equal(tool.permission, "allow");
+  assert.match(await tool.execute({ agent: "SEC", task: "check auth" }, { cwd: "." }), /ran sec: check auth/);
+  assert.match(await tool.execute({ agent: "nope", task: "x" }, { cwd: "." }), /Unknown agent/);
 });
 
 void runTests().then(() => {

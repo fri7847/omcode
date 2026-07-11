@@ -4,8 +4,10 @@
 // interactive UI (/model, /mode, /undo) stay in the dispatchers; the rest live here.
 
 import { readFile } from "node:fs/promises";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { renderDiff } from "./diff.js";
+import { loadAgents, agentsDir } from "../core/agents.js";
 import { projectDiagnostics, projectTest } from "../tools/diagnostics.js";
 import { loadConfig, saveConfig, configFile } from "./config.js";
 import { parseAgentMode } from "../core/agent-mode.js";
@@ -200,6 +202,50 @@ export function permissions(loop: AgentLoop, args: string[]): string {
     return `  ${p.name.padEnd(12)} ${eff.padEnd(16)} ${p.readOnly ? "read-only" : "mutating"}`;
   });
   return ["tool permissions  (·  /permissions allow|ask <tool>  overrides for this session)", ...rows].join("\n");
+}
+
+// ---- /agents ----
+
+/** /agents — list user-defined sub-agents (the model can call them via run_agent). */
+export function agentsText(cwd: string): string {
+  const agents = loadAgents(cwd);
+  if (agents.length === 0) {
+    return (
+      "no sub-agents defined.\n" +
+      `  create one:  /agents new <name>   → writes ${join(agentsDir(false, cwd), "<name>.md")}\n` +
+      "  a *.md file: frontmatter (name, description, optional tools/model) then the role prompt.\n" +
+      "  once defined, the model calls it automatically via run_agent when it fits — or you can name it."
+    );
+  }
+  const rows = agents.map(
+    (a) =>
+      `  ${a.name}\n    ${a.description}\n` +
+      `    tools: ${a.tools?.join(", ") ?? "read-only default"} · model: ${a.model ?? "session model"}\n` +
+      `    ${a.source}`,
+  );
+  return ["sub-agents  (callable by the model via run_agent, or ask for one by name)", ...rows].join("\n");
+}
+
+/** /agents new <name> — scaffold a project agent file to edit. */
+export function newAgentScaffold(cwd: string, name: string): string {
+  if (!/^[\w-]+$/.test(name)) return `invalid name "${name}" — use letters, digits, - or _`;
+  const file = join(agentsDir(false, cwd), `${name}.md`);
+  if (existsSync(file)) return `already exists: ${file}`;
+  mkdirSync(agentsDir(false, cwd), { recursive: true });
+  writeFileSync(file, agentTemplate(name), "utf8");
+  return `created ${file} — edit it, then restart omcode to activate the agent.`;
+}
+
+function agentTemplate(name: string): string {
+  return (
+    `---\n` +
+    `name: ${name}\n` +
+    `description: One line on what this agent does and WHEN to use it (the model reads this to decide whether to delegate).\n` +
+    `tools: read, grep, glob, repo_map\n` +
+    `model:\n` +
+    `---\n` +
+    `You are the ${name} agent. State the role, what to look for, and the exact format of the report to return.\n`
+  );
 }
 
 /** /mcp — configured MCP servers, their connection status and discovered tools. */
