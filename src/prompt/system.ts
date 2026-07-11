@@ -7,16 +7,19 @@ import os from "node:os";
 import type { AgentMode } from "../core/agent-mode.js";
 
 export function modeSection(mode: AgentMode): string {
-  if (mode === "architect") {
-    return `\n\n# Active mode: architect\n- Investigate the repository and return a concrete implementation plan.\n- Read-only tools are available; the harness blocks edits, writes, and shell commands in this mode.\n- For multi-file work, begin with repo_map, then read the important files.\n- Do not claim a change was made. Explain the smallest safe editor-mode next step.`;
+  if (mode === "scout") {
+    return `\n\n# Active mode: scout\n- Investigate the repository and return a concrete implementation plan.\n- Read-only tools are available; the harness blocks edits, writes, and shell commands in this mode.\n- For multi-file work, begin with repo_map, then read the important files.\n- Do not claim a change was made. Explain the smallest safe next step to run in check/flow mode.`;
   }
-  return `\n\n# Active mode: editor\n- Implement the requested change after inspecting the relevant files.\n- Use the normal approval flow for mutations.\n- For broad work, use repo_map before reading and editing multiple files.`;
+  if (mode === "flow") {
+    return `\n\n# Active mode: flow\n- Implement the requested change after inspecting the relevant files.\n- Mutations are applied automatically without a per-action prompt, so double-check each edit before making it.\n- For broad work, use repo_map before reading and editing multiple files.`;
+  }
+  return `\n\n# Active mode: check\n- Implement the requested change after inspecting the relevant files.\n- Use the normal approval flow for mutations (the user approves each one).\n- For broad work, use repo_map before reading and editing multiple files.`;
 }
 
 export function buildSystemPrompt(
   cwd: string,
   shellLabel: string,
-  mode: AgentMode = "editor",
+  mode: AgentMode = "check",
   profileAddendum = "",
   projectContext = "",
 ): string {

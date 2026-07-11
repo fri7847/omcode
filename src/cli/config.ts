@@ -65,7 +65,7 @@ export function resolveSettingsFrom(file: OmcodeConfig, env: NodeJS.ProcessEnv):
     stream: boolEnv(env["OMCODE_STREAM"]) ?? file.stream ?? true,
     think: boolEnv(env["OMCODE_THINK"]) ?? file.think,
     condenseModel: env["OMCODE_CONDENSE_MODEL"] ?? file.condenseModel,
-    mode: parseAgentMode(env["OMCODE_MODE"] ?? file.mode) ?? "editor",
+    mode: parseAgentMode(env["OMCODE_MODE"] ?? file.mode) ?? "check",
     maxOutput: env["OMCODE_MAX_OUTPUT"] ? Number(env["OMCODE_MAX_OUTPUT"]) : file.maxOutput,
   };
 }

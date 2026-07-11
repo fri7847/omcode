@@ -203,12 +203,18 @@ test("config: a dedicated condenser model is opt-in and env-overridable", () => 
   const fromEnv = resolveSettingsFrom({ condenseModel: "small" }, { OMCODE_CONDENSE_MODEL: "tiny" });
   assert.equal(fromEnv.condenseModel, "tiny");
 });
-test("agent mode: only architect blocks mutations", () => {
-  assert.equal(parseAgentMode("architect"), "architect");
+test("agent mode: only scout blocks mutations; flow auto-accepts", async () => {
+  const { autoAccepts } = await import("../src/core/agent-mode.js");
+  assert.equal(parseAgentMode("scout"), "scout");
+  assert.equal(parseAgentMode("architect"), "scout"); // legacy alias
+  assert.equal(parseAgentMode("editor"), "check"); // legacy alias
   assert.equal(parseAgentMode("bad"), undefined);
-  assert.equal(blocksTool("architect", false), true);
-  assert.equal(blocksTool("architect", true), false);
-  assert.equal(blocksTool("editor", false), false);
+  assert.equal(blocksTool("scout", false), true);
+  assert.equal(blocksTool("scout", true), false);
+  assert.equal(blocksTool("check", false), false);
+  assert.equal(blocksTool("flow", false), false);
+  assert.equal(autoAccepts("flow"), true);
+  assert.equal(autoAccepts("check"), false);
 });
 test("agent mode: the loop blocks a mutation before tool execution", async () => {
   let executed = false;
@@ -238,12 +244,12 @@ test("agent mode: the loop blocks a mutation before tool execution", async () =>
   };
   const session = new SessionLog(mkdtempSync(join(os.tmpdir(), "omcode-mode-")));
   const loop = new AgentLoop(
-    provider, registry, { model: "fake", numCtx: 1024, maxToolCallsPerTurn: 3, mode: "architect" },
+    provider, registry, { model: "fake", numCtx: 1024, maxToolCallsPerTurn: 3, mode: "scout" },
     ui, session, { cwd: process.cwd() }, "system prompt",
   );
   await loop.runTurn("make a plan");
   assert.equal(executed, false);
-  assert.match(results[0] ?? "", /Architect mode blocks/);
+  assert.match(results[0] ?? "", /Scout mode blocks/);
 });
 test("loop: appends post-edit diagnostics only after a successful mutation", async () => {
   let request = 0;
@@ -660,7 +666,7 @@ test("buildSystemPrompt: includes the profile addendum", async () => {
   const { buildSystemPrompt } = await import("../src/prompt/system.js");
   const { profileFor } = await import("../src/model/profiles.js");
   const add = profileFor("gemma4:31b").systemAddendum!;
-  const prompt = buildSystemPrompt("/tmp", "bash", "editor", add);
+  const prompt = buildSystemPrompt("/tmp", "bash", "check", add);
   assert.ok(prompt.includes("Note for this model"));
 });
 
@@ -753,7 +759,7 @@ test("commands: lint/test report 'none' outside a recognized project", async () 
 test("statusText: renders model/host/context with percent", async () => {
   const { statusText } = await import("../src/cli/commands.js");
   const out = statusText(
-    { host: "https://ollama.com", model: "qwen3-coder:480b", mode: "editor", numCtx: 32768, stream: true, hasApiKey: true, sessionFile: "/s.jsonl", cwd: "/w" },
+    { host: "https://ollama.com", model: "qwen3-coder:480b", mode: "check", numCtx: 32768, stream: true, hasApiKey: true, sessionFile: "/s.jsonl", cwd: "/w" },
     16384,
   );
   assert.match(out, /qwen3-coder:480b/);
@@ -764,7 +770,7 @@ test("setConfig: rejects unknown keys and bad values without writing", async () 
   const { setConfig } = await import("../src/cli/commands.js");
   assert.match(setConfig("bogus", "x"), /unknown key/);
   assert.match(setConfig("numCtx", "abc"), /must be a number/);
-  assert.match(setConfig("mode", "sideways"), /architect or editor/);
+  assert.match(setConfig("mode", "sideways"), /scout, check, or flow/);
   assert.match(setConfig("stream", "yes"), /true or false/);
 });
 

@@ -276,7 +276,7 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
     }
     if (input.startsWith("/mode")) {
       const mode = parseAgentMode(input.split(/\s+/, 2)[1]);
-      if (!mode) { render.notice("usage: /mode architect or /mode editor"); continue; }
+      if (!mode) { render.notice("usage: /mode scout | check | flow"); continue; }
       loop.setMode(mode);
       deps.onModePick(mode);
       screen.setHeader(deps.headerLine());

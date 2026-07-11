@@ -8,7 +8,7 @@ import type { ToolRegistry, ToolContext, ToolPreview } from "../tools/registry.j
 import { LoopBreaker } from "../policy/loop-breaker.js";
 import type { SessionLog } from "./session.js";
 import type { ContextManager } from "./context.js";
-import { blocksTool, type AgentMode } from "./agent-mode.js";
+import { blocksTool, autoAccepts, type AgentMode } from "./agent-mode.js";
 import { modeSection } from "../prompt/system.js";
 
 export type PermissionDecision = "yes" | "always" | "no";
@@ -35,7 +35,7 @@ export interface LoopConfig {
   think?: boolean;
   /** hard output-token cap (Ollama num_predict); undefined = no cap */
   maxOutput?: number;
-  /** Defaults to editor for backward compatibility with programmatic callers. */
+  /** Defaults to check (ask-before-mutating) for programmatic callers. */
   mode?: AgentMode;
 }
 
@@ -89,7 +89,7 @@ export class AgentLoop {
     this.messages.length = 0;
     this.messages.push({
       role: "system",
-      content: this.systemPrompt + modeSection(this.config.mode ?? "editor"),
+      content: this.systemPrompt + modeSection(this.config.mode ?? "check"),
     });
     this.breaker.reset();
     this.lastPromptTokens = 0;
@@ -109,7 +109,7 @@ export class AgentLoop {
   newSession(session: SessionSink): void {
     this.session = session;
     this.messages.length = 0;
-    const content = this.systemPrompt + modeSection(this.config.mode ?? "editor");
+    const content = this.systemPrompt + modeSection(this.config.mode ?? "check");
     this.messages.push({ role: "system", content });
     this.breaker.reset();
     this.lastPromptTokens = 0;
@@ -151,7 +151,7 @@ export class AgentLoop {
     if (system) {
       // Replace our own tagged section rather than continually appending
       // instructions as the user switches modes during a long session.
-      system.content = system.content.replace(/\n\n# Active mode: (?:architect|editor)[\s\S]*$/, "") + modeSection(mode);
+      system.content = system.content.replace(/\n\n# Active mode: (?:scout|check|flow)[\s\S]*$/, "") + modeSection(mode);
     } else {
       this.messages.unshift({ role: "system", content: this.systemPrompt + modeSection(mode) });
     }
@@ -317,21 +317,23 @@ export class AgentLoop {
     }
     const tool = this.registry.get(call.name)!;
 
-    if (blocksTool(this.config.mode ?? "editor", tool.readOnly)) {
+    const mode = this.config.mode ?? "check";
+    if (blocksTool(mode, tool.readOnly)) {
       const msg =
-        `Architect mode blocks the mutating tool "${call.name}". ` +
-        `Finish the plan, then switch with /mode editor before making changes.`;
+        `Scout mode blocks the mutating tool "${call.name}". ` +
+        `Finish the plan, then switch with /mode check (or /mode flow) before making changes.`;
       this.ui.onToolEnd(call, msg, true);
       return { result: msg };
     }
 
-    // 3. Permission gate.
+    // 3. Permission gate. flow mode auto-accepts what would otherwise ask.
     if (tool.permission === "deny") {
       const msg = `Tool "${call.name}" is disabled by policy. Use a different tool.`;
       this.ui.onToolEnd(call, msg, true);
       return { result: msg };
     }
-    const needsAsk = tool.permission === "ask" && !this.alwaysAllowed.has(call.name);
+    const needsAsk =
+      tool.permission === "ask" && !this.alwaysAllowed.has(call.name) && !autoAccepts(mode);
 
     // Preview the proposed change (diff / command) — shown always, so the
     // user sees the edit whether or not we prompt (Claude Code/OpenCode put

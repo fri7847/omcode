@@ -181,7 +181,7 @@ export function setConfig(key: string, value: string): string {
     v = value === "true";
   } else if (key === "mode") {
     const m = parseAgentMode(value);
-    if (!m) return "mode must be architect or editor";
+    if (!m) return "mode must be scout, check, or flow";
     v = m;
   }
   saveConfig({ [key]: v });
