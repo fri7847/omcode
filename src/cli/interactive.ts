@@ -12,7 +12,10 @@ import type { Renderer } from "./render.js";
 import type { AgentLoop, LoopUI, PermissionDecision } from "../core/loop.js";
 import type { ToolCall } from "../model/provider.js";
 import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
-import { INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject } from "./commands.js";
+import {
+  INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject,
+  statusText, doctorText, configText, setConfig, permissions, type EnvInfo,
+} from "./commands.js";
 
 const { accent, dim } = style;
 
@@ -164,6 +167,11 @@ export interface FixedDeps {
     originals(): { path: string; before: string | null }[];
   };
   cwd: string;
+  /** static parts of the status/doctor view — model/mode/sessionFile are live */
+  env: Omit<EnvInfo, "model" | "mode" | "sessionFile">;
+  sessionFile: string;
+  detectVram: () => Promise<number | undefined>;
+  newSessionLog: () => { append(type: string, data?: Record<string, unknown>): void; file: string };
   listModels: () => Promise<string[]>;
   onModelPick: (model: string) => void;
   currentModel: () => string;
@@ -202,6 +210,13 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
   };
 
   const loop = deps.makeLoop(ui);
+  let sessionFile = deps.sessionFile;
+  const envInfo = (): EnvInfo => ({
+    ...deps.env,
+    model: deps.currentModel(),
+    mode: deps.currentMode(),
+    sessionFile,
+  });
 
   for (;;) {
     screen.saveCursor();
@@ -222,6 +237,15 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
     if (input === "/diff") { stdout.write("\n" + (await sessionDiff(deps.checkpoints, deps.cwd, true)) + "\n"); continue; }
     if (input === "/lint") { render.notice("linting…"); stdout.write("\n" + (await lintProject(deps.cwd)) + "\n"); continue; }
     if (input === "/test") { render.notice("running tests…"); stdout.write("\n" + (await testProject(deps.cwd)) + "\n"); continue; }
+    if (input === "/status") { stdout.write("\n" + statusText(envInfo(), render.contextTokens()) + "\n"); continue; }
+    if (input === "/doctor") { render.notice("checking…"); stdout.write("\n" + (await doctorText(envInfo(), deps.listModels, deps.detectVram)) + "\n"); continue; }
+    if (input.startsWith("/config")) {
+      const [, key, ...rest] = input.split(/\s+/);
+      stdout.write("\n" + (key ? setConfig(key, rest.join(" ")) : configText()) + "\n");
+      continue;
+    }
+    if (input.startsWith("/permissions")) { stdout.write("\n" + permissions(loop, input.split(/\s+/).slice(1)) + "\n"); continue; }
+    if (input === "/new") { const s = deps.newSessionLog(); loop.newSession(s); sessionFile = s.file; render.notice("new session → " + s.file); continue; }
     if (input === "/undo") {
       const restored = await deps.checkpoints.undoLastTurn();
       render.notice(restored.length ? `restored: ${restored.map((p) => p.split(/[\\/]/).pop()).join(", ")}` : "되돌릴 변경 없음");

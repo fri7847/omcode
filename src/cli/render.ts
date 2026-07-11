@@ -245,11 +245,21 @@ export class Renderer {
         cmd("/diff", "이번 세션에 바뀐 파일 전체 diff") +
         cmd("/lint", "프로젝트 언어 검사기 실행 (tsc/go vet/ruff)") +
         cmd("/test", "프로젝트 테스트 명령 실행") +
+        cmd("/new", "새 세션 파일로 완전히 새 대화 시작") +
+        cmd("/status", "현재 모델·호스트·모드·컨텍스트 상태") +
+        cmd("/doctor", "설정 점검 (호스트 연결·모델·VRAM)") +
+        cmd("/config", "설정 보기 / `/config <키> <값>`으로 저장") +
+        cmd("/permissions", "도구 권한 보기 / allow·ask 세션 재정의") +
         cmd("/undo", "마지막 턴이 바꾼 파일 되돌리기") +
         cmd("/help", "이 도움말") +
         cmd("/exit", "종료") +
         `  ${dim("입력 끝에 \\ + Enter = 다음 줄 이어쓰기 · 생성 중 esc = 중단")}\n\n`,
     );
+  }
+
+  /** Live context-window size (prompt tokens of the last request), for /status. */
+  contextTokens(): number {
+    return this.totals.lastContext;
   }
 
   /** /cost — cumulative session usage from the running totals. */

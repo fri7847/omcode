@@ -7,6 +7,9 @@ import { readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { renderDiff } from "./diff.js";
 import { projectDiagnostics, projectTest } from "../tools/diagnostics.js";
+import { loadConfig, saveConfig, configFile } from "./config.js";
+import { parseAgentMode } from "../core/agent-mode.js";
+import { contextWindowWarning } from "../model/runtime.js";
 import type { AgentLoop } from "../core/loop.js";
 
 /** Just the slice of CheckpointStore /diff needs (keeps the frontends decoupled). */
@@ -75,6 +78,127 @@ export async function testProject(cwd: string): Promise<string> {
   if (!r) return "no test command detected (package.json test script / go.mod / Cargo.toml / pytest)";
   const tail = r.output.trim().split("\n").slice(-40).join("\n");
   return `${r.ok ? "✓ passed" : "✗ failed"} · ${r.label}\n${tail || "(no output)"}`;
+}
+
+// ---- /status /doctor /config /permissions ----
+
+/** Live session state passed to /status and /doctor (model/mode can change at
+ * runtime, so these are read from the running loop, not the frozen settings). */
+export interface EnvInfo {
+  host: string;
+  model: string;
+  mode: string;
+  numCtx: number;
+  think?: boolean;
+  stream: boolean;
+  hasApiKey: boolean;
+  condenseModel?: string;
+  maxOutput?: number;
+  sessionFile: string;
+  cwd: string;
+}
+
+/** /status — current session configuration + context usage. No network. */
+export function statusText(info: EnvInfo, contextTokens: number): string {
+  const pct = info.numCtx ? Math.round((contextTokens / info.numCtx) * 100) : 0;
+  return [
+    "omcode status",
+    `  model     ${info.model}`,
+    `  host      ${info.host}${info.hasApiKey ? "  (api key set)" : ""}`,
+    `  mode      ${info.mode}`,
+    `  context   ${info.numCtx} num_ctx · ${contextTokens} used (${pct}%)`,
+    `  think     ${info.think === undefined ? "server default" : String(info.think)}`,
+    `  stream    ${info.stream ? "on" : "off"}`,
+    info.condenseModel ? `  condense  ${info.condenseModel}` : "",
+    info.maxOutput ? `  maxOutput ${info.maxOutput}` : "",
+    `  session   ${info.sessionFile}`,
+    `  cwd       ${info.cwd}`,
+  ].filter(Boolean).join("\n");
+}
+
+/** /doctor — actionable health check of the setup (reachability, model, VRAM). */
+export async function doctorText(
+  info: EnvInfo,
+  listModels: () => Promise<string[]>,
+  detectVram: () => Promise<number | undefined>,
+): Promise<string> {
+  const ok = (m: string) => `  ✓ ${m}`;
+  const warn = (m: string) => `  ‼ ${m}`;
+  const lines: string[] = ["omcode doctor"];
+
+  let models: string[] = [];
+  try {
+    models = await listModels();
+  } catch {
+    /* handled below */
+  }
+  if (models.length === 0) {
+    lines.push(warn(`cannot list models from ${info.host} — host unreachable or key missing`));
+  } else {
+    lines.push(ok(`host reachable (${models.length} models)`));
+    lines.push(
+      models.includes(info.model)
+        ? ok(`model "${info.model}" available`)
+        : warn(`model "${info.model}" is not on the host — switch with /model`),
+    );
+  }
+  if (info.host.includes("ollama.com") && !info.hasApiKey) {
+    lines.push(warn(`Ollama Cloud host but no API key — set it in ${configFile()}`));
+  }
+  if (/localhost|127\.0\.0\.1|\[::1\]/.test(info.host)) {
+    const vram = await detectVram();
+    if (vram) {
+      const w = contextWindowWarning(info.model, info.numCtx, vram);
+      lines.push(w ? warn(w) : ok(`num_ctx ${info.numCtx} fits ${vram} MiB VRAM`));
+    } else {
+      lines.push("  · no NVIDIA GPU detected (nvidia-smi) — VRAM check skipped");
+    }
+  }
+  return lines.join("\n");
+}
+
+const CONFIG_KEYS = ["host", "model", "apiKey", "numCtx", "stream", "think", "condenseModel", "mode", "maxOutput"] as const;
+
+/** /config with no args — show the file path and current contents. */
+export function configText(): string {
+  return `config file: ${configFile()}\n${JSON.stringify(loadConfig(), null, 2)}`;
+}
+
+/** /config <key> <value> — persist a single setting (validated). */
+export function setConfig(key: string, value: string): string {
+  if (!(CONFIG_KEYS as readonly string[]).includes(key)) {
+    return `unknown key "${key}". known keys: ${CONFIG_KEYS.join(", ")}`;
+  }
+  let v: unknown = value;
+  if (key === "numCtx" || key === "maxOutput") {
+    v = Number(value);
+    if (!Number.isFinite(v)) return `${key} must be a number`;
+  } else if (key === "stream" || key === "think") {
+    if (value !== "true" && value !== "false") return `${key} must be true or false`;
+    v = value === "true";
+  } else if (key === "mode") {
+    const m = parseAgentMode(value);
+    if (!m) return "mode must be architect or editor";
+    v = m;
+  }
+  saveConfig({ [key]: v });
+  const live = key === "model" || key === "mode" ? "" : " — restart to apply";
+  return `saved ${key} = ${value} → ${configFile()}${live}`;
+}
+
+/** /permissions — list tools + levels, or set a session override with allow|ask <tool>. */
+export function permissions(loop: AgentLoop, args: string[]): string {
+  const [verb, tool] = args;
+  if (verb === "allow" || verb === "ask") {
+    if (!tool) return `usage: /permissions ${verb} <tool>`;
+    const okSet = loop.setToolAlways(tool, verb === "allow");
+    return okSet ? `${tool}: ${verb === "allow" ? "always allowed" : "will ask"} (this session)` : `unknown tool "${tool}"`;
+  }
+  const rows = loop.toolPermissions().map((p) => {
+    const eff = p.always ? "allow (session)" : p.permission;
+    return `  ${p.name.padEnd(12)} ${eff.padEnd(16)} ${p.readOnly ? "read-only" : "mutating"}`;
+  });
+  return ["tool permissions  (·  /permissions allow|ask <tool>  overrides for this session)", ...rows].join("\n");
 }
 
 /** Read the project's agent guide (AGENTS.md preferred) to inject into the system

@@ -103,6 +103,38 @@ export class AgentLoop {
     return this.contextMgr.compact(this.messages);
   }
 
+  /** Start a brand-new conversation logged to a fresh session (the /new command).
+   * Unlike /clear it also switches the session file, so the old transcript is
+   * closed and resume points at the new one. */
+  newSession(session: SessionSink): void {
+    this.session = session;
+    this.messages.length = 0;
+    const content = this.systemPrompt + modeSection(this.config.mode ?? "editor");
+    this.messages.push({ role: "system", content });
+    this.breaker.reset();
+    this.lastPromptTokens = 0;
+    this.session.append("system", { content });
+  }
+
+  /** Tool permission overview for /permissions. */
+  toolPermissions(): { name: string; permission: string; readOnly: boolean; always: boolean }[] {
+    return this.registry.list().map((t) => ({
+      name: t.name,
+      permission: t.permission,
+      readOnly: t.readOnly,
+      always: this.alwaysAllowed.has(t.name),
+    }));
+  }
+
+  /** Set a session-scope permission override (/permissions allow|ask <tool>).
+   * Returns false if the tool name is unknown. */
+  setToolAlways(name: string, always: boolean): boolean {
+    if (!this.registry.get(name)) return false;
+    if (always) this.alwaysAllowed.add(name);
+    else this.alwaysAllowed.delete(name);
+    return true;
+  }
+
   setMode(mode: AgentMode): void {
     this.config.mode = mode;
     const system = this.messages.find((message) => message.role === "system");

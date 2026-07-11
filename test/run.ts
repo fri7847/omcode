@@ -749,6 +749,25 @@ test("commands: lint/test report 'none' outside a recognized project", async () 
   assert.match(await testProject(dir), /no test command detected/);
 });
 
+// ---- /status /config ----
+test("statusText: renders model/host/context with percent", async () => {
+  const { statusText } = await import("../src/cli/commands.js");
+  const out = statusText(
+    { host: "https://ollama.com", model: "qwen3-coder:480b", mode: "editor", numCtx: 32768, stream: true, hasApiKey: true, sessionFile: "/s.jsonl", cwd: "/w" },
+    16384,
+  );
+  assert.match(out, /qwen3-coder:480b/);
+  assert.match(out, /50%/);
+  assert.match(out, /api key set/);
+});
+test("setConfig: rejects unknown keys and bad values without writing", async () => {
+  const { setConfig } = await import("../src/cli/commands.js");
+  assert.match(setConfig("bogus", "x"), /unknown key/);
+  assert.match(setConfig("numCtx", "abc"), /must be a number/);
+  assert.match(setConfig("mode", "sideways"), /architect or editor/);
+  assert.match(setConfig("stream", "yes"), /true or false/);
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });

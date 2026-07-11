@@ -74,6 +74,11 @@ In-session commands:
 | `/diff` | combined diff of every file changed this session |
 | `/lint` | run the project's language checker (tsc / go vet / ruff) |
 | `/test` | run the project's test command (npm/go/cargo/pytest) |
+| `/new` | start a fresh conversation in a new session file |
+| `/status` | current model / host / mode / context usage |
+| `/doctor` | health-check the setup (host reachable, model present, VRAM) |
+| `/config` | show config, or `/config <key> <value>` to persist one |
+| `/permissions` | list tool permissions, or `allow`/`ask <tool>` for the session |
 | `/undo` | revert the files the last turn changed |
 | `/help` · `/exit` | help · quit |
 

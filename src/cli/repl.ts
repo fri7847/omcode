@@ -32,7 +32,10 @@ import { FixedScreen } from "./screen.js";
 import { runFixed } from "./interactive.js";
 import { parseAgentMode } from "../core/agent-mode.js";
 import { contextWindowWarning, detectNvidiaVramMiB } from "../model/runtime.js";
-import { INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject, loadProjectContext } from "./commands.js";
+import {
+  INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject, loadProjectContext,
+  statusText, doctorText, configText, setConfig, permissions, type EnvInfo,
+} from "./commands.js";
 
 interface MenuItem {
   label: string;
@@ -225,8 +228,26 @@ async function main(): Promise<void> {
     await pickModel(available);
   }
 
-  const session = new SessionLog();
+  let session = new SessionLog();
   const cwd = process.cwd();
+
+  // Static half of the /status + /doctor view; model/mode/sessionFile are live.
+  const env = {
+    host: HOST,
+    numCtx: NUM_CTX,
+    stream: STREAM,
+    hasApiKey: Boolean(API_KEY),
+    think: loopConfig.think,
+    condenseModel: settings.condenseModel,
+    maxOutput: settings.maxOutput,
+    cwd,
+  };
+  const envInfo = (): EnvInfo => ({
+    ...env,
+    model: loopConfig.model,
+    mode: loopConfig.mode ?? "editor",
+    sessionFile: session.file,
+  });
   const resumeMessages = await resolveResume(pick);
   // Auto-load the project's agent guide (AGENTS.md / CLAUDE.md) into the system
   // prompt, and give /init something to produce. Bounded inside loadProjectContext.
@@ -297,6 +318,10 @@ async function main(): Promise<void> {
       editStats,
       checkpoints,
       cwd,
+      env,
+      sessionFile: session.file,
+      detectVram: () => detectNvidiaVramMiB(),
+      newSessionLog: () => new SessionLog(),
       listModels: () => provider.listModels(),
       onModelPick: (m) => {
         loopConfig.model = m;
@@ -363,6 +388,15 @@ async function main(): Promise<void> {
     if (input === "/diff") { stdout.write("\n" + (await sessionDiff(checkpoints, cwd, Boolean(stdout.isTTY))) + "\n"); continue; }
     if (input === "/lint") { render.notice("linting…"); stdout.write("\n" + (await lintProject(cwd)) + "\n"); continue; }
     if (input === "/test") { render.notice("running tests…"); stdout.write("\n" + (await testProject(cwd)) + "\n"); continue; }
+    if (input === "/status") { stdout.write("\n" + statusText(envInfo(), render.contextTokens()) + "\n"); continue; }
+    if (input === "/doctor") { render.notice("checking…"); stdout.write("\n" + (await doctorText(envInfo(), () => provider.listModels(), () => detectNvidiaVramMiB())) + "\n"); continue; }
+    if (input.startsWith("/config")) {
+      const [, key, ...rest] = input.split(/\s+/);
+      stdout.write("\n" + (key ? setConfig(key, rest.join(" ")) : configText()) + "\n");
+      continue;
+    }
+    if (input.startsWith("/permissions")) { stdout.write("\n" + permissions(loop, input.split(/\s+/).slice(1)) + "\n"); continue; }
+    if (input === "/new") { session = new SessionLog(); loop.newSession(session); stdout.write(dim(`  ✦ new session → ${session.file}\n\n`)); continue; }
     if (input === "/model") {
       await pickModel(await provider.listModels());
       continue;
