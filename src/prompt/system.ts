@@ -13,7 +13,12 @@ export function modeSection(mode: AgentMode): string {
   return `\n\n# Active mode: editor\n- Implement the requested change after inspecting the relevant files.\n- Use the normal approval flow for mutations.\n- For broad work, use repo_map before reading and editing multiple files.`;
 }
 
-export function buildSystemPrompt(cwd: string, shellLabel: string, mode: AgentMode = "editor"): string {
+export function buildSystemPrompt(
+  cwd: string,
+  shellLabel: string,
+  mode: AgentMode = "editor",
+  profileAddendum = "",
+): string {
   return `You are OMcode, a coding agent that works in the user's repository using tools.
 
 # How to work
@@ -41,5 +46,5 @@ export function buildSystemPrompt(cwd: string, shellLabel: string, mode: AgentMo
 # Environment
 - Working directory: ${cwd}
 - OS: ${os.platform()} (${os.release()})
-- Date: ${new Date().toISOString().slice(0, 10)}` + modeSection(mode);
+- Date: ${new Date().toISOString().slice(0, 10)}` + profileAddendum + modeSection(mode);
 }

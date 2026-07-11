@@ -14,6 +14,7 @@ import { CheckpointStore } from "../core/checkpoint.js";
 import { OllamaProvider } from "../model/ollama.js";
 import type { ChatMessage, ToolCall } from "../model/provider.js";
 import { buildSystemPrompt } from "../prompt/system.js";
+import { profileFor } from "../model/profiles.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { readTool } from "../tools/read.js";
 import { globTool } from "../tools/glob.js";
@@ -146,7 +147,16 @@ async function main(): Promise<void> {
   const checkpoints = new CheckpointStore();
   const render = new Renderer(NUM_CTX);
 
-  const loopConfig = { model: settings.model, numCtx: NUM_CTX, maxToolCallsPerTurn: 25, think: THINK, mode: settings.mode };
+  // Model profile: family-specific think default + system-prompt addendum.
+  // The user's explicit think (env/config) always wins over the profile default.
+  const profile = profileFor(settings.model);
+  const loopConfig = {
+    model: settings.model,
+    numCtx: NUM_CTX,
+    maxToolCallsPerTurn: 25,
+    think: THINK ?? profile.think,
+    mode: settings.mode,
+  };
 
   // Only probe local Ollama. Cloud hosts do not use this machine's VRAM.
   if (/localhost|127\.0\.0\.1|\[::1\]/.test(HOST)) {
@@ -185,6 +195,7 @@ async function main(): Promise<void> {
     const chosen = await pick(cyan("모델 선택"), items);
     if (chosen === null) return;
     loopConfig.model = available[chosen]!;
+    if (THINK === undefined) loopConfig.think = profileFor(loopConfig.model).think;
     saveConfig({ model: loopConfig.model, host: HOST });
     stdout.write(dim(`\n  model → ${cyan(loopConfig.model)} (saved)\n`));
   }
@@ -213,7 +224,7 @@ async function main(): Promise<void> {
   const session = new SessionLog();
   const cwd = process.cwd();
   const resumeMessages = await resolveResume(pick);
-  const systemPrompt = buildSystemPrompt(cwd, shell.label, settings.mode);
+  const systemPrompt = buildSystemPrompt(cwd, shell.label, settings.mode, profile.systemAddendum);
 
   const toolCtx = {
     cwd,
@@ -281,6 +292,7 @@ async function main(): Promise<void> {
       listModels: () => provider.listModels(),
       onModelPick: (m) => {
         loopConfig.model = m;
+        if (THINK === undefined) loopConfig.think = profileFor(m).think;
         saveConfig({ model: m, host: HOST });
       },
       currentModel: () => loopConfig.model,

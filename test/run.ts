@@ -584,6 +584,27 @@ test("stream think-filter: dims think, shows answer, handles split tags", async 
   }
 });
 
+// ---- model profiles ----
+test("profileFor: maps model families and defaults think for qwen3 chat", async () => {
+  const { profileFor } = await import("../src/model/profiles.js");
+  assert.equal(profileFor("qwen3-coder:480b").family, "qwen-coder");
+  assert.equal(profileFor("qwen3-coder:480b").think, undefined); // coder: leave to server
+  assert.equal(profileFor("qwen3:8b").family, "qwen");
+  assert.equal(profileFor("qwen3:8b").think, false); // thinking model: default off
+  assert.equal(profileFor("deepseek-r1:7b").family, "deepseek-r1");
+  assert.equal(profileFor("gemma4:31b").family, "gemma");
+  assert.ok(profileFor("gemma4:31b").systemAddendum); // weak tooling → reinforced
+  assert.equal(profileFor("some-unknown-model").family, "generic");
+  assert.equal(profileFor("some-unknown-model").think, undefined);
+});
+test("buildSystemPrompt: includes the profile addendum", async () => {
+  const { buildSystemPrompt } = await import("../src/prompt/system.js");
+  const { profileFor } = await import("../src/model/profiles.js");
+  const add = profileFor("gemma4:31b").systemAddendum!;
+  const prompt = buildSystemPrompt("/tmp", "bash", "editor", add);
+  assert.ok(prompt.includes("Note for this model"));
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });
