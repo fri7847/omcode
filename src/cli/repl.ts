@@ -20,7 +20,7 @@ import { readTool } from "../tools/read.js";
 import { globTool } from "../tools/glob.js";
 import { grepTool } from "../tools/grep.js";
 import { repoMapTool } from "../tools/repo-map.js";
-import { typecheckFailure, typecheckTool } from "../tools/typecheck.js";
+import { diagnosticsTool, postEditDiagnostics } from "../tools/diagnostics.js";
 import { makeTaskTool } from "../tools/task.js";
 import { makeEditTool, newEditStats } from "../tools/edit.js";
 import { writeTool } from "../tools/write.js";
@@ -139,7 +139,7 @@ async function main(): Promise<void> {
   registry.register(globTool);
   registry.register(grepTool);
   registry.register(repoMapTool);
-  registry.register(typecheckTool);
+  registry.register(diagnosticsTool);
   registry.register(makeEditTool(editStats));
   registry.register(writeTool);
   registry.register(makeShellTool(shell));
@@ -230,7 +230,7 @@ async function main(): Promise<void> {
     cwd,
     checkpoints,
     onFileChange: (a: number, r: number) => render.fileChange(a, r),
-    postEditDiagnostics: () => typecheckFailure(cwd),
+    postEditDiagnostics: () => postEditDiagnostics(cwd),
   };
 
   // Subtasks share the provider but get a fresh message list and a read-only

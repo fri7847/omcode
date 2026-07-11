@@ -41,7 +41,7 @@ export function buildSystemPrompt(
 - Include 2-3 surrounding lines in "search" so it matches only one place. If the same text appears more than once, pass startLine.
 - If an edit fails, the error tells you what the file actually contains — copy your next search block from that, do not retype from memory.
 - Use write only for new files or when told to rewrite a whole file.
-- After TypeScript edits, call typecheck to get deterministic compiler diagnostics before deciding whether another edit is needed.
+- After editing code, call diagnostics to get deterministic checks for the project's language (TypeScript/Go/Python) before deciding whether another edit is needed.
 
 # Environment
 - Working directory: ${cwd}

@@ -31,11 +31,16 @@ function normalize(file: string): string {
 }
 
 function definitions(content: string): string[] {
+  const lines = content.split(/\r?\n/);
   const found: string[] = [];
-  for (let i = 0; i < content.split(/\r?\n/).length; i++) {
-    const line = content.split(/\r?\n/)[i]!;
+  const seen = new Set<string>();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
     const name = line.match(DEFINITION)?.[1] ?? line.match(PYTHON_DEFINITION)?.[1] ?? line.match(GO_DEFINITION)?.[1];
-    if (name && !found.includes(name)) found.push(`${name}:${i + 1}`);
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      found.push(`${name}:${i + 1}`);
+    }
   }
   return found;
 }

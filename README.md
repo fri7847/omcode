@@ -73,7 +73,7 @@ npm test               # harness unit tests (no model needed)
 npx tsx eval/run.ts <model>   # mini edit benchmark against a live model
 ```
 
-Contributions welcome — the harness core (`src/core`, `src/model`, `src/tools`) is deliberately small and dependency-light.
+Contributions welcome — the harness core (`src/core`, `src/model`, `src/tools`) is deliberately small and dependency-light. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md).
 
 ## License
 

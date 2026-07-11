@@ -584,6 +584,23 @@ test("stream think-filter: dims think, shows answer, handles split tags", async 
   }
 });
 
+// ---- multi-language diagnostics ----
+test("projectDiagnostics: returns 'none' when no project type is present", async () => {
+  const { projectDiagnostics } = await import("../src/tools/diagnostics.js");
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-diag-"));
+  writeFileSync(join(dir, "notes.txt"), "hi", "utf8");
+  const d = await projectDiagnostics(dir);
+  assert.equal(d.language, "none");
+  assert.equal(d.failure, undefined);
+});
+test("projectDiagnostics: detects a TypeScript project via tsconfig.json", async () => {
+  const { projectDiagnostics } = await import("../src/tools/diagnostics.js");
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-diag-ts-"));
+  writeFileSync(join(dir, "tsconfig.json"), "{}", "utf8"); // empty config → tsc has nothing to fail on
+  const d = await projectDiagnostics(dir);
+  assert.equal(d.language, "typescript"); // ran the TS path (clean or error, both are "typescript")
+});
+
 // ---- model profiles ----
 test("profileFor: maps model families and defaults think for qwen3 chat", async () => {
   const { profileFor } = await import("../src/model/profiles.js");
