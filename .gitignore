@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+# local runtime data (sessions, config with API keys) live in ~/.omcode, not here
+.omcode/
+# internal development notes — kept local, not published
+CLAUDE.md
+DESIGN.md
+research/
