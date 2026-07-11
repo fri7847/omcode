@@ -239,7 +239,7 @@ export interface FixedDeps {
   detectVram: () => Promise<number | undefined>;
   newSessionLog: () => { append(type: string, data?: Record<string, unknown>): void; file: string };
   mcpStatus: () => McpServerStatus[];
-  currentThink: () => boolean | undefined;
+  currentThink: () => string | undefined;
   listModels: () => Promise<string[]>;
   onModelPick: (model: string) => void;
   currentModel: () => string;

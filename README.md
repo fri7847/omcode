@@ -68,6 +68,7 @@ In-session commands:
 | `/init` | analyze the repo and write an `AGENTS.md` guide |
 | `/model` | switch model (lists what the host serves; saves the choice) |
 | `/mode read\|ask\|auto` | read=read-only · ask=approve each · auto=auto-apply |
+| `/think off\|low\|medium\|high\|xhigh` | reasoning effort (xhigh = ultra) |
 | `/compact` | summarize older turns now to reclaim context |
 | `/clear` | reset the conversation (model/mode kept) |
 | `/cost` | session token + context usage |

@@ -12,6 +12,7 @@ import { projectDiagnostics, projectTest } from "../tools/diagnostics.js";
 import { loadConfig, saveConfig, configFile } from "./config.js";
 import { parseAgentMode } from "../core/agent-mode.js";
 import { contextWindowWarning } from "../model/runtime.js";
+import { parseThinkLevel, type ThinkLevel } from "../core/think.js";
 import type { McpServerStatus } from "../tools/mcp.js";
 import type { AgentLoop } from "../core/loop.js";
 
@@ -92,7 +93,8 @@ export interface EnvInfo {
   model: string;
   mode: string;
   numCtx: number;
-  think?: boolean;
+  /** reasoning-effort level label (off|low|medium|high|xhigh) */
+  think?: string;
   stream: boolean;
   hasApiKey: boolean;
   condenseModel?: string;
@@ -110,7 +112,7 @@ export function statusText(info: EnvInfo, contextTokens: number): string {
     `  host      ${info.host}${info.hasApiKey ? "  (api key set)" : ""}`,
     `  mode      ${info.mode}`,
     `  context   ${info.numCtx} num_ctx · ${contextTokens} used (${pct}%)`,
-    `  think     ${info.think === undefined ? "server default" : String(info.think)}`,
+    `  think     ${info.think ?? "off"}`,
     `  stream    ${info.stream ? "on" : "off"}`,
     info.condenseModel ? `  condense  ${info.condenseModel}` : "",
     info.maxOutput ? `  maxOutput ${info.maxOutput}` : "",
@@ -189,14 +191,22 @@ export function setConfig(key: string, value: string): string {
   return `saved ${key} = ${value} → ${configFile()}${live}`;
 }
 
-/** /think [on|off] — toggle model reasoning for the rest of the session. */
+/** /think [off|low|medium|high|xhigh] — set reasoning effort for the session.
+ * Bare /think toggles off <-> medium. "ultra" is an alias for xhigh. */
 export function toggleThink(loop: AgentLoop, arg?: string): string {
-  const cur = loop.getThink() ?? false;
-  const next = arg === "on" ? true : arg === "off" ? false : !cur;
-  loop.setThink(next);
-  return next
-    ? "thinking on (this session) — the model reasons before answering: slower, sometimes better. Some models ignore it."
-    : "thinking off (this session) — faster replies.";
+  const cur = loop.getThinkLevel();
+  let next: ThinkLevel;
+  if (arg === undefined || arg === "") {
+    next = cur === "off" ? "medium" : "off";
+  } else {
+    const parsed = parseThinkLevel(arg);
+    if (!parsed) return "usage: /think off | low | medium | high | xhigh  (xhigh = ultra)";
+    next = parsed;
+  }
+  loop.setThinkLevel(next);
+  return next === "off"
+    ? "thinking off (this session) — faster replies."
+    : `thinking: ${next}${next === "xhigh" ? " (ultra)" : ""} (this session) — reasons before answering; higher = more deliberation but slower. Some models ignore it.`;
 }
 
 /** /permissions — list tools + levels, or set a session override with allow|ask <tool>. */

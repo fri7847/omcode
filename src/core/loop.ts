@@ -10,6 +10,7 @@ import type { SessionLog } from "./session.js";
 import type { ContextManager } from "./context.js";
 import { blocksTool, autoAccepts, type AgentMode } from "./agent-mode.js";
 import { modeSection } from "../prompt/system.js";
+import { thinkOn, effortSection, type ThinkLevel } from "./think.js";
 
 export type PermissionDecision = "yes" | "always" | "no";
 
@@ -32,7 +33,10 @@ export interface LoopConfig {
   model: string;
   numCtx: number;
   maxToolCallsPerTurn: number;
+  /** on/off reasoning flag (used by subagents that don't set a level) */
   think?: boolean;
+  /** reasoning-effort level; when set it drives `think` and the effort prompt */
+  thinkLevel?: ThinkLevel;
   /** hard output-token cap (Ollama num_predict); undefined = no cap */
   maxOutput?: number;
   /** Defaults to check (ask-before-mutating) for programmatic callers. */
@@ -126,14 +130,22 @@ export class AgentLoop {
     }));
   }
 
-  /** Current thinking toggle (undefined = server default). */
-  getThink(): boolean | undefined {
-    return this.config.think;
+  /** Current reasoning-effort level (the /think command). */
+  getThinkLevel(): ThinkLevel {
+    return this.config.thinkLevel ?? "off";
   }
 
-  /** Toggle reasoning on/off for subsequent requests (the /think command). */
-  setThink(value: boolean): void {
-    this.config.think = value;
+  /** Set the reasoning-effort level: drives the `think` flag and swaps the
+   * effort section in the system prompt for subsequent requests. */
+  setThinkLevel(level: ThinkLevel): void {
+    this.config.thinkLevel = level;
+    const system = this.messages.find((message) => message.role === "system");
+    if (system) {
+      // strip the existing (bounded) effort block, then append the new one
+      system.content =
+        system.content.replace(/\n\n# Reasoning effort:[^\n]*(?:\n-[^\n]*)*/, "") + effortSection(level);
+    }
+    this.session.append("thinkLevel", { level });
   }
 
   /** Set a session-scope permission override (/permissions allow|ask <tool>).
@@ -151,7 +163,8 @@ export class AgentLoop {
     if (system) {
       // Replace our own tagged section rather than continually appending
       // instructions as the user switches modes during a long session.
-      system.content = system.content.replace(/\n\n# Active mode: (?:read|ask|auto)[\s\S]*$/, "") + modeSection(mode);
+      // bounded (bullets only) so it doesn't swallow a trailing effort section
+      system.content = system.content.replace(/\n\n# Active mode: (?:read|ask|auto)(?:\n-[^\n]*)*/, "") + modeSection(mode);
     } else {
       this.messages.unshift({ role: "system", content: this.systemPrompt + modeSection(mode) });
     }
@@ -192,7 +205,7 @@ export class AgentLoop {
           messages: this.messages,
           tools: this.registry.schemas(),
           numCtx: this.config.numCtx,
-          think: this.config.think,
+          think: this.config.thinkLevel !== undefined ? thinkOn(this.config.thinkLevel) : this.config.think,
           maxOutput: this.config.maxOutput,
           onDelta,
           signal,

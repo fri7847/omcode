@@ -34,6 +34,7 @@ import { Renderer, style } from "./render.js";
 import { FixedScreen } from "./screen.js";
 import { runFixed } from "./interactive.js";
 import { parseAgentMode } from "../core/agent-mode.js";
+import type { ThinkLevel } from "../core/think.js";
 import { contextWindowWarning, detectNvidiaVramMiB } from "../model/runtime.js";
 import {
   INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject, loadProjectContext,
@@ -159,11 +160,15 @@ async function main(): Promise<void> {
   // Model profile: family-specific think default + system-prompt addendum.
   // The user's explicit think (env/config) always wins over the profile default.
   const profile = profileFor(settings.model);
+  // Reasoning effort: explicit level (env/config) wins, else derive from the
+  // think on/off default (on → high, off/unset → off).
+  const initialThink = THINK ?? profile.think;
   const loopConfig = {
     model: settings.model,
     numCtx: NUM_CTX,
     maxToolCallsPerTurn: 25,
-    think: THINK ?? profile.think,
+    think: initialThink,
+    thinkLevel: (settings.thinkLevel ?? (initialThink === true ? "high" : "off")) as ThinkLevel,
     mode: settings.mode,
     maxOutput: settings.maxOutput,
   };
@@ -240,7 +245,7 @@ async function main(): Promise<void> {
     numCtx: NUM_CTX,
     stream: STREAM,
     hasApiKey: Boolean(API_KEY),
-    think: loopConfig.think,
+    think: loopConfig.thinkLevel,
     condenseModel: settings.condenseModel,
     maxOutput: settings.maxOutput,
     cwd,
@@ -249,14 +254,14 @@ async function main(): Promise<void> {
     ...env,
     model: loopConfig.model,
     mode: loopConfig.mode ?? "ask",
-    think: loopConfig.think, // live — /think mutates this
+    think: loopConfig.thinkLevel, // live — /think mutates this
     sessionFile: session.file,
   });
   const resumeMessages = await resolveResume(pick);
   // Auto-load the project's agent guide (AGENTS.md / CLAUDE.md) into the system
   // prompt, and give /init something to produce. Bounded inside loadProjectContext.
   const projectContext = await loadProjectContext(cwd);
-  const systemPrompt = buildSystemPrompt(cwd, shell.label, settings.mode, profile.systemAddendum, projectContext);
+  const systemPrompt = buildSystemPrompt(cwd, shell.label, settings.mode, profile.systemAddendum, projectContext, loopConfig.thinkLevel);
 
   const toolCtx = {
     cwd,
@@ -379,7 +384,7 @@ async function main(): Promise<void> {
         saveConfig({ model: m, host: HOST });
       },
       currentModel: () => loopConfig.model,
-      currentThink: () => loopConfig.think,
+      currentThink: () => loopConfig.thinkLevel,
       onModePick: (mode) => { loopConfig.mode = mode; },
       currentMode: () => loopConfig.mode,
       headerLine: () =>

@@ -239,7 +239,7 @@ export class Renderer {
         cmd("/init", "이 저장소를 분석해 AGENTS.md 생성") +
         cmd("/model", "서버의 모델 목록에서 전환 (선택 저장)") +
         cmd("/mode", "read(읽기전용)·ask(승인)·auto(자동적용) 전환") +
-        cmd("/think", "추론(thinking) 모드 세션 토글 [on|off]") +
+        cmd("/think", "추론 강도 [off|low|medium|high|xhigh]") +
         cmd("/compact", "오래된 대화를 요약해 컨텍스트 확보") +
         cmd("/clear", "대화 초기화 (모델·모드 유지)") +
         cmd("/cost", "이번 세션 토큰·컨텍스트 사용량") +

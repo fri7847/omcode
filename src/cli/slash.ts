@@ -13,7 +13,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "/init", desc: "저장소 분석해 AGENTS.md 생성" },
   { name: "/model", desc: "모델 전환" },
   { name: "/mode", desc: "read·ask·auto 전환", args: ["read", "ask", "auto"] },
-  { name: "/think", desc: "추론 모드 토글", args: ["on", "off"] },
+  { name: "/think", desc: "추론 강도", args: ["off", "low", "medium", "high", "xhigh"] },
   { name: "/compact", desc: "컨텍스트 압축" },
   { name: "/clear", desc: "대화 초기화" },
   { name: "/new", desc: "새 세션 시작" },

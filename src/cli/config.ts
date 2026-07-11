@@ -6,6 +6,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import os from "node:os";
 import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
+import { parseThinkLevel, type ThinkLevel } from "../core/think.js";
 
 export interface OmcodeConfig {
   host?: string;
@@ -14,6 +15,8 @@ export interface OmcodeConfig {
   numCtx?: number;
   stream?: boolean;
   think?: boolean;
+  /** Reasoning-effort level (off|low|medium|high|xhigh); overrides `think`. */
+  thinkLevel?: ThinkLevel;
   /** Optional cheaper model used only for context condensation. */
   condenseModel?: string;
   mode?: AgentMode;
@@ -30,6 +33,7 @@ export interface Settings {
   numCtx: number;
   stream: boolean;
   think?: boolean;
+  thinkLevel?: ThinkLevel;
   condenseModel?: string;
   mode: AgentMode;
   maxOutput?: number;
@@ -64,6 +68,7 @@ export function resolveSettingsFrom(file: OmcodeConfig, env: NodeJS.ProcessEnv):
     numCtx: Number(env["OMCODE_NUM_CTX"] ?? file.numCtx ?? 32_768),
     stream: boolEnv(env["OMCODE_STREAM"]) ?? file.stream ?? true,
     think: boolEnv(env["OMCODE_THINK"]) ?? file.think,
+    thinkLevel: parseThinkLevel(env["OMCODE_THINK_LEVEL"] ?? file.thinkLevel),
     condenseModel: env["OMCODE_CONDENSE_MODEL"] ?? file.condenseModel,
     mode: parseAgentMode(env["OMCODE_MODE"] ?? file.mode) ?? "ask",
     maxOutput: env["OMCODE_MAX_OUTPUT"] ? Number(env["OMCODE_MAX_OUTPUT"]) : file.maxOutput,

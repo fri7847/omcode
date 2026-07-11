@@ -868,18 +868,40 @@ test("agents: run_agent tool lists agents, dispatches case-insensitively, guards
 });
 
 // ---- /think ----
-test("toggleThink: flips state and honors explicit on/off", async () => {
+test("think: parse/levels/effort section", async () => {
+  const { parseThinkLevel, thinkOn, effortSection } = await import("../src/core/think.js");
+  assert.equal(parseThinkLevel("high"), "high");
+  assert.equal(parseThinkLevel("ultra"), "xhigh"); // alias
+  assert.equal(parseThinkLevel("nope"), undefined);
+  assert.equal(thinkOn("off"), false);
+  assert.equal(thinkOn("low"), true);
+  assert.equal(effortSection("off"), "");
+  assert.match(effortSection("xhigh"), /maximum \(ultra\)/);
+});
+test("toggleThink: sets effort levels, toggles, accepts ultra", async () => {
   const { toggleThink } = await import("../src/cli/commands.js");
-  let v: boolean | undefined;
-  const loop = { getThink: () => v, setThink: (x: boolean) => { v = x; } } as unknown as import("../src/core/loop.js").AgentLoop;
-  toggleThink(loop); // undefined → false → toggles to true
-  assert.equal(v, true);
-  assert.match(toggleThink(loop, "off"), /off/);
-  assert.equal(v, false);
-  assert.match(toggleThink(loop, "on"), /on/);
-  assert.equal(v, true);
-  toggleThink(loop); // no arg → toggles back off
-  assert.equal(v, false);
+  let v = "off";
+  const loop = { getThinkLevel: () => v, setThinkLevel: (x: string) => { v = x; } } as unknown as import("../src/core/loop.js").AgentLoop;
+  toggleThink(loop); assert.equal(v, "medium"); // off → medium
+  toggleThink(loop); assert.equal(v, "off"); // medium → off
+  assert.match(toggleThink(loop, "high"), /high/); assert.equal(v, "high");
+  assert.match(toggleThink(loop, "ultra"), /ultra/); assert.equal(v, "xhigh");
+  assert.match(toggleThink(loop, "bogus"), /usage/); assert.equal(v, "xhigh"); // invalid → no change
+});
+test("loop: setThinkLevel swaps the effort section without touching mode", async () => {
+  const { buildSystemPrompt } = await import("../src/prompt/system.js");
+  const { AgentLoop } = await import("../src/core/loop.js");
+  const provider = { chat: async () => ({ content: "", toolCalls: [], usage: { promptTokens: 1, completionTokens: 1 }, doneReason: "stop" }), listModels: async () => [] } as unknown as import("../src/model/provider.js").Provider;
+  const sys = buildSystemPrompt("/w", "bash", "ask", "", "", "off");
+  const loop = new AgentLoop(provider, new ToolRegistry(), { model: "m", numCtx: 1024, maxToolCallsPerTurn: 1, mode: "ask", thinkLevel: "off" }, { onAssistantText() {}, onToolStart() {}, onToolEnd() {}, onNotice() {}, askPermission: async () => "no" }, { append() {} }, { cwd: "/w" }, sys);
+  const content = () => loop.messages.find((m) => m.role === "system")!.content;
+  assert.ok(!content().includes("# Reasoning effort"));
+  loop.setThinkLevel("high");
+  assert.match(content(), /# Reasoning effort: high/);
+  assert.match(content(), /# Active mode: ask/); // mode untouched
+  loop.setThinkLevel("off");
+  assert.ok(!content().includes("# Reasoning effort")); // cleanly removed
+  assert.match(content(), /# Active mode: ask/);
 });
 
 // ---- slash autocomplete ----
@@ -904,7 +926,8 @@ test("slash: slashSuggest completes command names and first arguments", async ()
   // first argument (space typed → all options; partial → filtered)
   assert.deepEqual(slashSuggest("/mode "), { token: "", candidates: ["read", "ask", "auto"] });
   assert.deepEqual(slashSuggest("/mode as"), { token: "as", candidates: ["ask"] });
-  assert.deepEqual(slashSuggest("/think o")!.candidates, ["on", "off"]);
+  assert.deepEqual(slashSuggest("/think ")!.candidates, ["off", "low", "medium", "high", "xhigh"]);
+  assert.deepEqual(slashSuggest("/think h")!.candidates, ["high"]);
   assert.equal(slashSuggest("/mode ask "), null); // second arg → nothing
   assert.equal(slashSuggest("/status "), null); // command takes no args
   // applying a completion replaces the trailing token

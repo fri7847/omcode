@@ -5,6 +5,7 @@
 
 import os from "node:os";
 import type { AgentMode } from "../core/agent-mode.js";
+import { effortSection, type ThinkLevel } from "../core/think.js";
 
 export function modeSection(mode: AgentMode): string {
   if (mode === "read") {
@@ -22,6 +23,7 @@ export function buildSystemPrompt(
   mode: AgentMode = "ask",
   profileAddendum = "",
   projectContext = "",
+  thinkLevel: ThinkLevel = "off",
 ): string {
   const projectSection = projectContext
     ? `\n\n# Project guide (from AGENTS.md)\n${projectContext}`
@@ -54,5 +56,5 @@ export function buildSystemPrompt(
 # Environment
 - Working directory: ${cwd}
 - OS: ${os.platform()} (${os.release()})
-- Date: ${new Date().toISOString().slice(0, 10)}` + projectSection + profileAddendum + modeSection(mode);
+- Date: ${new Date().toISOString().slice(0, 10)}` + projectSection + profileAddendum + modeSection(mode) + effortSection(thinkLevel);
 }
