@@ -14,9 +14,10 @@ import type { ToolCall } from "../model/provider.js";
 import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
 import {
   INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject,
-  statusText, doctorText, configText, setConfig, permissions, toggleThink, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
+  statusText, doctorText, configText, setConfig, permissions, toggleThink, mcpStatusText, agentsText, newAgentScaffold, parseVerify, formatPanel, type EnvInfo,
 } from "./commands.js";
 import type { McpServerStatus } from "../tools/mcp.js";
+import type { PanelResult } from "../core/panel.js";
 import { slashSuggest, applyCompletion, commonPrefix, commandTakesArgs } from "./slash.js";
 
 const { accent, dim } = style;
@@ -239,6 +240,7 @@ export interface FixedDeps {
   detectVram: () => Promise<number | undefined>;
   newSessionLog: () => { append(type: string, data?: Record<string, unknown>): void; file: string };
   mcpStatus: () => McpServerStatus[];
+  verify: (question: string, count: number) => Promise<PanelResult>;
   currentThink: () => string | undefined;
   listModels: () => Promise<string[]>;
   onModelPick: (model: string) => void;
@@ -319,6 +321,14 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
     if (input.startsWith("/agents")) {
       const [, sub, name] = input.split(/\s+/);
       stdout.write("\n" + (sub === "new" ? newAgentScaffold(deps.cwd, name ?? "") : agentsText(deps.cwd)) + "\n");
+      continue;
+    }
+    if (input.startsWith("/verify")) {
+      const { count, question } = parseVerify(input);
+      if (!question) { render.notice("usage: /verify [count] <question>"); continue; }
+      render.notice(`verifying with ${Math.max(2, Math.min(count, 6))} agents in parallel — several model calls…`);
+      try { stdout.write("\n" + formatPanel(await deps.verify(question, count)) + "\n"); }
+      catch (err) { render.error((err as Error).message); }
       continue;
     }
     if (input === "/new") { const s = deps.newSessionLog(); loop.newSession(s); sessionFile = s.file; render.notice("new session → " + s.file); continue; }

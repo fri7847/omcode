@@ -38,8 +38,9 @@ import type { ThinkLevel } from "../core/think.js";
 import { contextWindowWarning, detectNvidiaVramMiB } from "../model/runtime.js";
 import {
   INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject, loadProjectContext,
-  statusText, doctorText, configText, setConfig, permissions, toggleThink, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
+  statusText, doctorText, configText, setConfig, permissions, toggleThink, mcpStatusText, agentsText, newAgentScaffold, parseVerify, formatPanel, type EnvInfo,
 } from "./commands.js";
+import { runPanel, synthesizePrompt, type PanelResult } from "../core/panel.js";
 
 interface MenuItem {
   label: string;
@@ -337,6 +338,47 @@ async function main(): Promise<void> {
     }));
   }
 
+  // Parallel verification panel (/verify): N read-only agents with distinct
+  // lenses run concurrently, then a synthesis pass cross-checks their reports.
+  const readonlyRegistry = (): ToolRegistry => {
+    const r = new ToolRegistry();
+    for (const t of registry.list()) {
+      if (t.readOnly && t.name !== "run_agent" && t.name !== "task") r.register(t);
+    }
+    return r;
+  };
+  const runVerify = (question: string, count: number): Promise<PanelResult> =>
+    runPanel(
+      question,
+      count,
+      async (lens) => {
+        let report = "";
+        const sub = new AgentLoop(
+          provider,
+          readonlyRegistry(),
+          { model: loopConfig.model, numCtx: NUM_CTX, maxToolCallsPerTurn: 10, think: THINK, thinkLevel: loopConfig.thinkLevel, mode: "read" },
+          { onAssistantText: (t) => { report = t; }, onToolStart() {}, onToolEnd() {}, onNotice() {}, askPermission: async () => "no" },
+          { append() {} },
+          { cwd },
+          buildSystemPrompt(cwd, shell.label, "read") + `\n\n# Verification lens\n${lens}`,
+        );
+        const stats = await sub.runTurn(
+          `${question}\n\nInvestigate with read-only tools and report concise, evidence-backed findings with exact file paths. Do not propose edits.`,
+        );
+        return { text: report, toolCalls: stats.toolCalls };
+      },
+      async (q, reports) => {
+        const res = await provider.chat({
+          model: loopConfig.model,
+          messages: [{ role: "user", content: synthesizePrompt(q, reports) }],
+          tools: [],
+          numCtx: NUM_CTX,
+          think: false,
+        });
+        return res.content;
+      },
+    );
+
   // Connect configured MCP servers and bridge their tools into the registry
   // (no-op with no config). Best-effort: failures are reported, never fatal.
   const mcp = await connectMcpServers(loadConfig().mcpServers ?? {}, registry);
@@ -377,6 +419,7 @@ async function main(): Promise<void> {
       detectVram: () => detectNvidiaVramMiB(),
       newSessionLog: () => new SessionLog(),
       mcpStatus: () => mcp.status(),
+      verify: runVerify,
       listModels: () => provider.listModels(),
       onModelPick: (m) => {
         loopConfig.model = m;
@@ -458,6 +501,14 @@ async function main(): Promise<void> {
     if (input.startsWith("/agents")) {
       const [, sub, name] = input.split(/\s+/);
       stdout.write("\n" + (sub === "new" ? newAgentScaffold(cwd, name ?? "") : agentsText(cwd)) + "\n");
+      continue;
+    }
+    if (input.startsWith("/verify")) {
+      const { count, question } = parseVerify(input);
+      if (!question) { render.notice("usage: /verify [count] <question>"); continue; }
+      render.notice(`verifying with ${Math.max(2, Math.min(count, 6))} agents in parallel — several model calls…`);
+      try { stdout.write("\n" + formatPanel(await runVerify(question, count)) + "\n"); }
+      catch (err) { render.error((err as Error).message); }
       continue;
     }
     if (input === "/new") { session = new SessionLog(); loop.newSession(session); stdout.write(dim(`  ✦ new session → ${session.file}\n\n`)); continue; }

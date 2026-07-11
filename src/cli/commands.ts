@@ -13,6 +13,7 @@ import { loadConfig, saveConfig, configFile } from "./config.js";
 import { parseAgentMode } from "../core/agent-mode.js";
 import { contextWindowWarning } from "../model/runtime.js";
 import { parseThinkLevel, type ThinkLevel } from "../core/think.js";
+import type { PanelResult } from "../core/panel.js";
 import type { McpServerStatus } from "../tools/mcp.js";
 import type { AgentLoop } from "../core/loop.js";
 
@@ -266,6 +267,20 @@ function agentTemplate(name: string): string {
     `---\n` +
     `You are the ${name} agent. State the role, what to look for, and the exact format of the report to return.\n`
   );
+}
+
+/** Parse `/verify [count] <question>` → count (default 3) and the question. */
+export function parseVerify(input: string): { count: number; question: string } {
+  const rest = input.replace(/^\/verify\s*/, "");
+  const m = /^(\d+)\s+([\s\S]+)$/.exec(rest);
+  return m ? { count: Number(m[1]), question: m[2]!.trim() } : { count: 3, question: rest.trim() };
+}
+
+/** /verify — render the panel's synthesis, with a footer of agents + tool calls. */
+export function formatPanel(result: PanelResult): string {
+  const totalCalls = result.reports.reduce((s, r) => s + r.toolCalls, 0);
+  const footer = `\n\n─── ${result.reports.length} agents cross-checked · ${totalCalls} tool calls ───`;
+  return `${result.synthesis.trim() || "(no synthesis produced)"}${footer}`;
 }
 
 /** /mcp — configured MCP servers, their connection status and discovered tools. */

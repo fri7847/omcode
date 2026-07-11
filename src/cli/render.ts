@@ -253,6 +253,7 @@ export class Renderer {
         cmd("/permissions", "도구 권한 보기 / allow·ask 세션 재정의") +
         cmd("/mcp", "연결된 MCP 서버·도구 상태") +
         cmd("/agents", "서브에이전트 목록 / `/agents new <이름>` 생성") +
+        cmd("/verify", "여러 에이전트 병렬 검증 [개수] <질문>") +
         cmd("/undo", "마지막 턴이 바꾼 파일 되돌리기") +
         cmd("/help", "이 도움말") +
         cmd("/exit", "종료") +

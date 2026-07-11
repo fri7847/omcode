@@ -943,6 +943,32 @@ test("screen: decodeKeys recognizes tab (drives autocomplete completion)", async
   assert.deepEqual(decodeKeys("/c\t").map((k) => k.t), ["char", "char", "tab"]);
 });
 
+// ---- /verify parallel panel ----
+test("panel: runPanel fans out N agents (clamped) then synthesizes all", async () => {
+  const { runPanel } = await import("../src/core/panel.js");
+  const seen: number[] = [];
+  const res = await runPanel(
+    "does X work?",
+    9, // clamps to 6
+    async (lens, q, i) => { seen.push(i); return { text: `agent ${i}: ${q}`, toolCalls: i + 1 }; },
+    async (q, reports) => `synthesis of ${reports.length} over "${q}"`,
+  );
+  assert.equal(res.reports.length, 6); // clamped 2..6
+  assert.deepEqual(seen.sort((a, b) => a - b), [0, 1, 2, 3, 4, 5]);
+  assert.match(res.synthesis, /synthesis of 6/);
+  // low count clamps up to 2
+  const low = await runPanel("q", 1, async () => ({ text: "t", toolCalls: 0 }), async (_q, r) => `n=${r.length}`);
+  assert.equal(low.reports.length, 2);
+});
+test("commands: parseVerify + formatPanel", async () => {
+  const { parseVerify, formatPanel } = await import("../src/cli/commands.js");
+  assert.deepEqual(parseVerify("/verify how does auth work"), { count: 3, question: "how does auth work" });
+  assert.deepEqual(parseVerify("/verify 5 explain the loop"), { count: 5, question: "explain the loop" });
+  const out = formatPanel({ reports: [{ lens: "a", text: "x", toolCalls: 2 }, { lens: "b", text: "y", toolCalls: 3 }], synthesis: "the answer" });
+  assert.match(out, /the answer/);
+  assert.match(out, /2 agents cross-checked · 5 tool calls/);
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });

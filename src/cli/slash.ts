@@ -27,6 +27,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "/permissions", desc: "도구 권한", args: ["allow", "ask"] },
   { name: "/mcp", desc: "MCP 서버 상태" },
   { name: "/agents", desc: "서브에이전트", args: ["new"] },
+  { name: "/verify", desc: "여러 에이전트 병렬 검증" },
   { name: "/undo", desc: "마지막 변경 되돌리기" },
   { name: "/help", desc: "도움말" },
   { name: "/exit", desc: "종료" },
