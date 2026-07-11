@@ -21,6 +21,7 @@ import { globTool } from "../tools/glob.js";
 import { grepTool } from "../tools/grep.js";
 import { repoMapTool } from "../tools/repo-map.js";
 import { diagnosticsTool, postEditDiagnostics } from "../tools/diagnostics.js";
+import { webFetchTool } from "../tools/web-fetch.js";
 import { makeTaskTool } from "../tools/task.js";
 import { makeEditTool, newEditStats } from "../tools/edit.js";
 import { writeTool } from "../tools/write.js";
@@ -140,6 +141,7 @@ async function main(): Promise<void> {
   registry.register(grepTool);
   registry.register(repoMapTool);
   registry.register(diagnosticsTool);
+  registry.register(webFetchTool);
   registry.register(makeEditTool(editStats));
   registry.register(writeTool);
   registry.register(makeShellTool(shell));

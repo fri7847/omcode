@@ -34,6 +34,7 @@ export function buildSystemPrompt(
 - For multi-file tasks, call repo_map first for a compact dependency/definition overview, then read the relevant files.
 - Use task only for a focused read-only investigation that benefits from isolated context; its returned report is the only context that comes back.
 - shell runs ${shellLabel} commands and requires user approval. Use it only when file tools cannot do the job.
+- web_fetch retrieves the text of a specific http(s) URL (docs, API references). It cannot search — you must supply the exact URL. Requires user approval.
 
 # Editing files
 - ALWAYS read a file before editing it.

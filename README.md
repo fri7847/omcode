@@ -20,7 +20,7 @@ Recovery is ordered by token cost: **absorb in harness code (0 tokens) → one c
 ## Features
 
 - Minimal agent loop (`while tool_call`), append-only JSONL sessions, resume
-- Tools: `read` `glob` `grep` `repo_map` `task` `edit` `write` `typecheck` `shell`
+- Tools: `read` `glob` `grep` `repo_map` `task` `edit` `write` `diagnostics` `web_fetch` `shell`
 - Architect/editor separation: architect mode is enforced read-only; isolated `task` scouts return only a compact report
 - Post-edit TypeScript diagnostics: clean checks add no context; failures are returned to the editor automatically
 - Permissions (allow / ask / deny), `.git/` writes blocked, per-session "always allow"

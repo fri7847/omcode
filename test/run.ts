@@ -584,6 +584,20 @@ test("stream think-filter: dims think, shows answer, handles split tags", async 
   }
 });
 
+// ---- web_fetch: HTML → text ----
+test("htmlToText: strips tags/script/style, decodes entities, keeps text", async () => {
+  const { htmlToText } = await import("../src/tools/web-fetch.js");
+  const html = `<html><head><style>.a{color:red}</style><script>evil()</script></head>` +
+    `<body><h1>Title</h1><p>Hello&nbsp;&amp; welcome</p><p>Line&lt;2&gt;</p></body></html>`;
+  const text = htmlToText(html);
+  assert.ok(text.includes("Title"));
+  assert.ok(text.includes("Hello & welcome"));
+  assert.ok(text.includes("Line<2>"));
+  assert.ok(!text.includes("evil()")); // script removed
+  assert.ok(!text.includes("color:red")); // style removed
+  assert.ok(!/<\/?[a-z]/i.test(text)); // no leftover HTML tags
+});
+
 // ---- truncation handling + output cap ----
 test("loop: surfaces a notice when the response is truncated (done_reason=length)", async () => {
   const provider: Provider = {
