@@ -18,7 +18,11 @@ export function buildSystemPrompt(
   shellLabel: string,
   mode: AgentMode = "editor",
   profileAddendum = "",
+  projectContext = "",
 ): string {
+  const projectSection = projectContext
+    ? `\n\n# Project guide (from AGENTS.md)\n${projectContext}`
+    : "";
   return `You are OMcode, a coding agent that works in the user's repository using tools.
 
 # How to work
@@ -47,5 +51,5 @@ export function buildSystemPrompt(
 # Environment
 - Working directory: ${cwd}
 - OS: ${os.platform()} (${os.release()})
-- Date: ${new Date().toISOString().slice(0, 10)}` + profileAddendum + modeSection(mode);
+- Date: ${new Date().toISOString().slice(0, 10)}` + projectSection + profileAddendum + modeSection(mode);
 }

@@ -232,14 +232,37 @@ export class Renderer {
   }
 
   help(): void {
+    const cmd = (name: string, desc: string) => `  ${accent(name.padEnd(9))}${desc}\n`;
     stdout.write(
       "\n" +
         `  ${bold("commands")}\n` +
-        `  ${accent("/model")}  서버의 모델 목록에서 전환 (선택 저장)\n` +
-        `  ${accent("/undo")}   마지막 턴이 바꾼 파일 되돌리기\n` +
-        `  ${accent("/help")}   이 도움말\n` +
-        `  ${accent("/exit")}   종료\n` +
+        cmd("/init", "이 저장소를 분석해 AGENTS.md 생성") +
+        cmd("/model", "서버의 모델 목록에서 전환 (선택 저장)") +
+        cmd("/mode", "architect(읽기전용) / editor 전환") +
+        cmd("/compact", "오래된 대화를 요약해 컨텍스트 확보") +
+        cmd("/clear", "대화 초기화 (모델·모드 유지)") +
+        cmd("/cost", "이번 세션 토큰·컨텍스트 사용량") +
+        cmd("/diff", "이번 세션에 바뀐 파일 전체 diff") +
+        cmd("/undo", "마지막 턴이 바꾼 파일 되돌리기") +
+        cmd("/help", "이 도움말") +
+        cmd("/exit", "종료") +
         `  ${dim("입력 끝에 \\ + Enter = 다음 줄 이어쓰기 · 생성 중 esc = 중단")}\n\n`,
+    );
+  }
+
+  /** /cost — cumulative session usage from the running totals. */
+  cost(): void {
+    const t = this.totals;
+    const total = t.prompt + t.completion;
+    const pct = this.numCtx > 0 ? Math.round((t.lastContext / this.numCtx) * 100) : 0;
+    stdout.write(
+      "\n" +
+        `  ${bold("session usage")}\n` +
+        `  tokens    ${fmtTokens(total)}  ${dim(`(${fmtTokens(t.prompt)}↑ prompt · ${fmtTokens(t.completion)}↓ completion)`)}\n` +
+        `  requests  ${t.requests}  ${dim("·")}  tools ${t.tools}\n` +
+        `  context   ${fmtTokens(t.lastContext)} / ${fmtTokens(this.numCtx)}  ${dim(`(${pct}%)`)}\n` +
+        (t.added || t.removed ? `  code      ${green(`+${t.added}`)} ${red(`−${t.removed}`)}\n` : "") +
+        "\n",
     );
   }
 

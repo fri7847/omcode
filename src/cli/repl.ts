@@ -32,6 +32,7 @@ import { FixedScreen } from "./screen.js";
 import { runFixed } from "./interactive.js";
 import { parseAgentMode } from "../core/agent-mode.js";
 import { contextWindowWarning, detectNvidiaVramMiB } from "../model/runtime.js";
+import { INIT_PROMPT, clearConversation, compactNow, sessionDiff, loadProjectContext } from "./commands.js";
 
 interface MenuItem {
   label: string;
@@ -227,7 +228,10 @@ async function main(): Promise<void> {
   const session = new SessionLog();
   const cwd = process.cwd();
   const resumeMessages = await resolveResume(pick);
-  const systemPrompt = buildSystemPrompt(cwd, shell.label, settings.mode, profile.systemAddendum);
+  // Auto-load the project's agent guide (AGENTS.md / CLAUDE.md) into the system
+  // prompt, and give /init something to produce. Bounded inside loadProjectContext.
+  const projectContext = await loadProjectContext(cwd);
+  const systemPrompt = buildSystemPrompt(cwd, shell.label, settings.mode, profile.systemAddendum, projectContext);
 
   const toolCtx = {
     cwd,
@@ -292,6 +296,7 @@ async function main(): Promise<void> {
       makeLoop,
       editStats,
       checkpoints,
+      cwd,
       listModels: () => provider.listModels(),
       onModelPick: (m) => {
         loopConfig.model = m;
@@ -352,6 +357,10 @@ async function main(): Promise<void> {
       render.help();
       continue;
     }
+    if (input === "/clear") { render.notice(clearConversation(loop)); continue; }
+    if (input === "/compact") { render.notice(await compactNow(loop)); continue; }
+    if (input === "/cost") { render.cost(); continue; }
+    if (input === "/diff") { stdout.write("\n" + (await sessionDiff(checkpoints, cwd, Boolean(stdout.isTTY))) + "\n"); continue; }
     if (input === "/model") {
       await pickModel(await provider.listModels());
       continue;
@@ -377,6 +386,9 @@ async function main(): Promise<void> {
       continue;
     }
 
+    // /init runs the canned analysis prompt as a normal turn.
+    const turnInput = input === "/init" ? INIT_PROMPT : input;
+
     checkpoints.beginTurn();
     const editsBefore = editStats.applied;
     const attemptsBefore = editStats.attempts;
@@ -397,7 +409,7 @@ async function main(): Promise<void> {
     }
 
     try {
-      const stats = await loop.runTurn(input, ac.signal);
+      const stats = await loop.runTurn(turnInput, ac.signal);
       render.turnFooter({
         requests: stats.requests,
         tools: stats.toolCalls,

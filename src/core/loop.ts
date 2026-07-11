@@ -83,6 +83,26 @@ export class AgentLoop {
     }
   }
 
+  /** Reset the conversation to a fresh state, keeping the system prompt + mode
+   * (the /clear command). The session log records a marker so resume replays it. */
+  clear(): void {
+    this.messages.length = 0;
+    this.messages.push({
+      role: "system",
+      content: this.systemPrompt + modeSection(this.config.mode ?? "editor"),
+    });
+    this.breaker.reset();
+    this.lastPromptTokens = 0;
+    this.session.append("cleared", {});
+  }
+
+  /** Force context condensation now (the /compact command). No-op without a
+   * context manager or when there is nothing old enough to summarize. */
+  async compactNow(): Promise<{ condensed: boolean; before: number; after: number }> {
+    if (!this.contextMgr) return { condensed: false, before: 0, after: 0 };
+    return this.contextMgr.compact(this.messages);
+  }
+
   setMode(mode: AgentMode): void {
     this.config.mode = mode;
     const system = this.messages.find((message) => message.role === "system");

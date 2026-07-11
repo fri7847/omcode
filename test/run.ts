@@ -664,6 +664,75 @@ test("buildSystemPrompt: includes the profile addendum", async () => {
   assert.ok(prompt.includes("Note for this model"));
 });
 
+// ---- slash commands: /compact /clear /diff /init + project context ----
+test("context: compact() force-condenses regardless of budget", async () => {
+  const cm = new ContextManager({ numCtx: 999999, reserve: 0, keepRecent: 2 }, async () => "SUMMARY");
+  const msgs: ChatMessage[] = [
+    { role: "system", content: "sys" },
+    ...Array.from({ length: 8 }, (_, i): ChatMessage => ({ role: i % 2 ? "assistant" : "user", content: `turn ${i}` })),
+    { role: "user", content: "LATEST" },
+  ];
+  const r = await cm.compact(msgs); // way under budget, but /compact forces it
+  assert.equal(r.condensed, true);
+  assert.match(msgs[1]!.content, /SUMMARY/);
+  assert.match(msgs[msgs.length - 1]!.content, /LATEST/);
+  assert.ok(r.after <= r.before);
+});
+test("context: compact() is a no-op with nothing old enough", async () => {
+  const cm = new ContextManager({ numCtx: 999999, reserve: 0, keepRecent: 8 }, async () => "S");
+  const msgs: ChatMessage[] = [{ role: "system", content: "sys" }, { role: "user", content: "hi" }];
+  const r = await cm.compact(msgs);
+  assert.equal(r.condensed, false);
+  assert.equal(msgs.length, 2);
+});
+test("checkpoint: originals() reports earliest pre-change state per file", async () => {
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-orig-"));
+  const f = join(dir, "a.txt");
+  writeFileSync(f, "v0", "utf8");
+  const store = new CheckpointStore();
+  store.beginTurn();
+  await store.snapshot(f);
+  writeFileSync(f, "v1", "utf8");
+  store.beginTurn(); // second turn touches the same file — earliest must win
+  await store.snapshot(f);
+  writeFileSync(f, "v2", "utf8");
+  const origs = store.originals();
+  assert.equal(origs.length, 1);
+  assert.equal(origs[0]!.before, "v0");
+});
+test("session: loadMessages honors a 'cleared' marker (keeps only system)", () => {
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-clr-"));
+  const file = join(dir, "s.jsonl");
+  const events = [
+    { ts: "t", type: "system", content: "sys" },
+    { ts: "t", type: "user", content: "old" },
+    { ts: "t", type: "assistant", content: "old-answer" },
+    { ts: "t", type: "cleared" },
+    { ts: "t", type: "user", content: "fresh" },
+  ];
+  writeFileSync(file, events.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
+  const msgs = loadMessages(file);
+  assert.equal(msgs.length, 2);
+  assert.equal(msgs[0]!.role, "system");
+  assert.equal(msgs[1]!.content, "fresh");
+});
+test("commands: sessionDiff renders changes and reports when clean", async () => {
+  const { sessionDiff, loadProjectContext } = await import("../src/cli/commands.js");
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-cmd-"));
+  const f = join(dir, "a.txt");
+  writeFileSync(f, "new content\n", "utf8");
+  const cp = { originals: () => [{ path: f, before: "old content\n" }] };
+  const out = await sessionDiff(cp, dir, false);
+  assert.match(out, /a\.txt/);
+  assert.match(out, /new content/);
+  // no changes → friendly message
+  const clean = await sessionDiff({ originals: () => [] }, dir, false);
+  assert.match(clean, /no files have been changed/);
+  // project context loads AGENTS.md (bounded)
+  writeFileSync(join(dir, "AGENTS.md"), "PROJECT-GUIDE", "utf8");
+  assert.equal(await loadProjectContext(dir), "PROJECT-GUIDE");
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });

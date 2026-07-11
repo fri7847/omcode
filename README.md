@@ -61,7 +61,21 @@ Configuration lives in `~/.omcode/config.json` (host / model / apiKey / numCtx).
 }
 ```
 
-In-session: `/model` (switch model), `/mode architect|editor`, `/undo`, `/help`, `/exit`. During a turn, `esc` interrupts.
+In-session commands:
+
+| command | what it does |
+| --- | --- |
+| `/init` | analyze the repo and write an `AGENTS.md` guide |
+| `/model` | switch model (lists what the host serves; saves the choice) |
+| `/mode architect\|editor` | architect is enforced read-only |
+| `/compact` | summarize older turns now to reclaim context |
+| `/clear` | reset the conversation (model/mode kept) |
+| `/cost` | session token + context usage |
+| `/diff` | combined diff of every file changed this session |
+| `/undo` | revert the files the last turn changed |
+| `/help` · `/exit` | help · quit |
+
+During a turn, `esc` interrupts. On startup OMcode auto-loads `AGENTS.md` (or `CLAUDE.md`) from the working directory into the system prompt, so `/init` pays off on the next run.
 
 > **Hardware note:** on an 8 GB GPU (e.g. RTX 3070 Ti), an 8B model at `num_ctx=8192` is the practical local sweet spot; larger contexts spill to CPU and slow to a crawl. On local NVIDIA hosts OMcode probes VRAM and warns about unsafe context settings without overriding an explicit setting. For serious work, use Ollama Cloud.
 

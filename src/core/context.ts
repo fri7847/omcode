@@ -74,7 +74,29 @@ export class ContextManager {
     if (!over()) return result;
 
     // ---- Layer 2: condense older turns via LLM ----
-    if (!this.condense || messages.length <= this.cfg.keepRecent + 2) return result;
+    if (await this.condenseOlder(messages)) result.condensed = true;
+    return result;
+  }
+
+  /**
+   * Manual /compact — condense older turns regardless of the budget. Returns
+   * before/after token estimates so the UI can report what was reclaimed.
+   */
+  async compact(
+    messages: ChatMessage[],
+  ): Promise<{ condensed: boolean; before: number; after: number }> {
+    const before = this.totalEstimate(messages);
+    const condensed = await this.condenseOlder(messages);
+    return { condensed, before, after: condensed ? this.totalEstimate(messages) : before };
+  }
+
+  /**
+   * Replace older turns (everything except the system prompt and the most
+   * recent keepRecent messages) with a single LLM summary. Mutates in place.
+   * Returns whether it condensed. Shared by ensure() and compact().
+   */
+  private async condenseOlder(messages: ChatMessage[]): Promise<boolean> {
+    if (!this.condense || messages.length <= this.cfg.keepRecent + 2) return false;
 
     const head = messages[0]!; // system prompt — never condensed
     const recent = messages.slice(-this.cfg.keepRecent);
@@ -83,7 +105,7 @@ export class ContextManager {
       recent.unshift(messages[messages.length - recent.length - 1]!);
     }
     const older = messages.slice(1, messages.length - recent.length);
-    if (older.length === 0) return result;
+    if (older.length === 0) return false;
 
     const transcript = older
       .map((m) => `${m.role.toUpperCase()}: ${m.content.slice(0, 1500)}`)
@@ -93,7 +115,7 @@ export class ContextManager {
     try {
       summary = await this.condense(transcript);
     } catch {
-      return result; // condensation failure must never break the loop
+      return false; // condensation failure must never break the loop
     }
 
     messages.length = 0;
@@ -107,8 +129,7 @@ export class ContextManager {
       },
       ...recent,
     );
-    result.condensed = true;
-    return result;
+    return true;
   }
 }
 

@@ -12,6 +12,7 @@ import type { Renderer } from "./render.js";
 import type { AgentLoop, LoopUI, PermissionDecision } from "../core/loop.js";
 import type { ToolCall } from "../model/provider.js";
 import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
+import { INIT_PROMPT, clearConversation, compactNow, sessionDiff } from "./commands.js";
 
 const { accent, dim } = style;
 
@@ -157,7 +158,12 @@ export interface FixedDeps {
   render: Renderer;
   makeLoop: (ui: LoopUI) => AgentLoop;
   editStats: { applied: number; attempts: number };
-  checkpoints: { beginTurn(): void; undoLastTurn(): Promise<string[]> };
+  checkpoints: {
+    beginTurn(): void;
+    undoLastTurn(): Promise<string[]>;
+    originals(): { path: string; before: string | null }[];
+  };
+  cwd: string;
   listModels: () => Promise<string[]>;
   onModelPick: (model: string) => void;
   currentModel: () => string;
@@ -210,6 +216,10 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
     // chat (the transient command UI is erased), so the conversation stays clean.
     if (input === "/exit" || input === "/quit") break;
     if (input === "/help") { render.help(); continue; }
+    if (input === "/clear") { render.notice(clearConversation(loop)); continue; }
+    if (input === "/compact") { render.notice(await compactNow(loop)); continue; }
+    if (input === "/cost") { render.cost(); continue; }
+    if (input === "/diff") { stdout.write("\n" + (await sessionDiff(deps.checkpoints, deps.cwd, true)) + "\n"); continue; }
     if (input === "/undo") {
       const restored = await deps.checkpoints.undoLastTurn();
       render.notice(restored.length ? `restored: ${restored.map((p) => p.split(/[\\/]/).pop()).join(", ")}` : "되돌릴 변경 없음");
@@ -237,6 +247,10 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
       continue;
     }
 
+    // /init runs the canned analysis prompt as a normal turn (reuses the whole
+    // agent loop + write-with-approval); the echo still shows the short command.
+    const turnInput = input === "/init" ? INIT_PROMPT : input;
+
     // real chat input — echoed as the user's turn, then run
     stdout.write("\n " + accent("»") + " " + input.replace(/\n/g, dim(" ⏎ ")) + "\n");
 
@@ -249,7 +263,7 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
       if (k.t === "esc" || k.t === "ctrlc") ac.abort();
     });
     try {
-      const stats = await loop.runTurn(input, ac.signal);
+      const stats = await loop.runTurn(turnInput, ac.signal);
       render.turnFooter({
         requests: stats.requests,
         tools: stats.toolCalls,

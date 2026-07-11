@@ -112,6 +112,10 @@ export function loadMessages(file: string): ChatMessage[] {
           toolName: String(ev["name"] ?? ""),
         });
         break;
+      case "cleared":
+        // /clear reset the conversation — drop everything but the system prompt
+        messages.splice(1);
+        break;
       default:
         break;
     }

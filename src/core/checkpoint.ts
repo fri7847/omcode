@@ -34,6 +34,17 @@ export class CheckpointStore {
     this.current.push({ path: absPath, before });
   }
 
+  /** For each file mutated this session, its earliest pre-change content — the
+   * session-original state, so /diff can show original→current for the whole run. */
+  originals(): { path: string; before: string | null }[] {
+    const seen = new Map<string, string | null>();
+    for (const turn of this.turns) {
+      // turns are oldest→newest, so the first time we see a path is its origin
+      for (const snap of turn) if (!seen.has(snap.path)) seen.set(snap.path, snap.before);
+    }
+    return [...seen].map(([path, before]) => ({ path, before }));
+  }
+
   /** Undo the most recent turn that changed files. Returns restored paths. */
   async undoLastTurn(): Promise<string[]> {
     while (this.turns.length > 0) {
