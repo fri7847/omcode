@@ -189,6 +189,16 @@ export function setConfig(key: string, value: string): string {
   return `saved ${key} = ${value} → ${configFile()}${live}`;
 }
 
+/** /think [on|off] — toggle model reasoning for the rest of the session. */
+export function toggleThink(loop: AgentLoop, arg?: string): string {
+  const cur = loop.getThink() ?? false;
+  const next = arg === "on" ? true : arg === "off" ? false : !cur;
+  loop.setThink(next);
+  return next
+    ? "thinking on (this session) — the model reasons before answering: slower, sometimes better. Some models ignore it."
+    : "thinking off (this session) — faster replies.";
+}
+
 /** /permissions — list tools + levels, or set a session override with allow|ask <tool>. */
 export function permissions(loop: AgentLoop, args: string[]): string {
   const [verb, tool] = args;

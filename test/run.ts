@@ -859,6 +859,21 @@ test("agents: run_agent tool lists agents, dispatches case-insensitively, guards
   assert.match(await tool.execute({ agent: "nope", task: "x" }, { cwd: "." }), /Unknown agent/);
 });
 
+// ---- /think ----
+test("toggleThink: flips state and honors explicit on/off", async () => {
+  const { toggleThink } = await import("../src/cli/commands.js");
+  let v: boolean | undefined;
+  const loop = { getThink: () => v, setThink: (x: boolean) => { v = x; } } as unknown as import("../src/core/loop.js").AgentLoop;
+  toggleThink(loop); // undefined → false → toggles to true
+  assert.equal(v, true);
+  assert.match(toggleThink(loop, "off"), /off/);
+  assert.equal(v, false);
+  assert.match(toggleThink(loop, "on"), /on/);
+  assert.equal(v, true);
+  toggleThink(loop); // no arg → toggles back off
+  assert.equal(v, false);
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });

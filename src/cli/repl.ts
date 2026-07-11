@@ -37,7 +37,7 @@ import { parseAgentMode } from "../core/agent-mode.js";
 import { contextWindowWarning, detectNvidiaVramMiB } from "../model/runtime.js";
 import {
   INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject, loadProjectContext,
-  statusText, doctorText, configText, setConfig, permissions, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
+  statusText, doctorText, configText, setConfig, permissions, toggleThink, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
 } from "./commands.js";
 
 interface MenuItem {
@@ -249,6 +249,7 @@ async function main(): Promise<void> {
     ...env,
     model: loopConfig.model,
     mode: loopConfig.mode ?? "editor",
+    think: loopConfig.think, // live — /think mutates this
     sessionFile: session.file,
   });
   const resumeMessages = await resolveResume(pick);
@@ -378,6 +379,7 @@ async function main(): Promise<void> {
         saveConfig({ model: m, host: HOST });
       },
       currentModel: () => loopConfig.model,
+      currentThink: () => loopConfig.think,
       onModePick: (mode) => { loopConfig.mode = mode; },
       currentMode: () => loopConfig.mode,
       headerLine: () =>
@@ -446,6 +448,7 @@ async function main(): Promise<void> {
       continue;
     }
     if (input.startsWith("/permissions")) { stdout.write("\n" + permissions(loop, input.split(/\s+/).slice(1)) + "\n"); continue; }
+    if (input.startsWith("/think")) { render.notice(toggleThink(loop, input.split(/\s+/)[1])); continue; }
     if (input === "/mcp") { stdout.write("\n" + mcpStatusText(mcp.status()) + "\n"); continue; }
     if (input.startsWith("/agents")) {
       const [, sub, name] = input.split(/\s+/);

@@ -14,7 +14,7 @@ import type { ToolCall } from "../model/provider.js";
 import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
 import {
   INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject,
-  statusText, doctorText, configText, setConfig, permissions, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
+  statusText, doctorText, configText, setConfig, permissions, toggleThink, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
 } from "./commands.js";
 import type { McpServerStatus } from "../tools/mcp.js";
 
@@ -174,6 +174,7 @@ export interface FixedDeps {
   detectVram: () => Promise<number | undefined>;
   newSessionLog: () => { append(type: string, data?: Record<string, unknown>): void; file: string };
   mcpStatus: () => McpServerStatus[];
+  currentThink: () => boolean | undefined;
   listModels: () => Promise<string[]>;
   onModelPick: (model: string) => void;
   currentModel: () => string;
@@ -217,6 +218,7 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
     ...deps.env,
     model: deps.currentModel(),
     mode: deps.currentMode(),
+    think: deps.currentThink(),
     sessionFile,
   });
 
@@ -247,6 +249,7 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
       continue;
     }
     if (input.startsWith("/permissions")) { stdout.write("\n" + permissions(loop, input.split(/\s+/).slice(1)) + "\n"); continue; }
+    if (input.startsWith("/think")) { render.notice(toggleThink(loop, input.split(/\s+/)[1])); continue; }
     if (input === "/mcp") { stdout.write("\n" + mcpStatusText(deps.mcpStatus()) + "\n"); continue; }
     if (input.startsWith("/agents")) {
       const [, sub, name] = input.split(/\s+/);

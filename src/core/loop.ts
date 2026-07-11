@@ -126,6 +126,16 @@ export class AgentLoop {
     }));
   }
 
+  /** Current thinking toggle (undefined = server default). */
+  getThink(): boolean | undefined {
+    return this.config.think;
+  }
+
+  /** Toggle reasoning on/off for subsequent requests (the /think command). */
+  setThink(value: boolean): void {
+    this.config.think = value;
+  }
+
   /** Set a session-scope permission override (/permissions allow|ask <tool>).
    * Returns false if the tool name is unknown. */
   setToolAlways(name: string, always: boolean): boolean {
