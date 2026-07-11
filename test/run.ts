@@ -880,6 +880,25 @@ test("toggleThink: flips state and honors explicit on/off", async () => {
   assert.equal(v, false);
 });
 
+// ---- slash autocomplete ----
+test("slash: matchSlash filters by prefix, only for a bare command token", async () => {
+  const { matchSlash, commonPrefix } = await import("../src/cli/slash.js");
+  const co = matchSlash("/co").map((c) => c.name);
+  assert.ok(co.includes("/compact") && co.includes("/config") && co.includes("/cost"));
+  assert.ok(!co.includes("/model"));
+  assert.equal(matchSlash("/model x").length, 0); // has args → no suggestions
+  assert.equal(matchSlash("hello").length, 0); // not a slash
+  assert.deepEqual(matchSlash("/perm").map((c) => c.name), ["/permissions"]);
+  assert.equal(commonPrefix(["/compact", "/config", "/cost"]), "/co");
+  assert.equal(commonPrefix(["/model"]), "/model");
+});
+
+test("screen: decodeKeys recognizes tab (drives autocomplete completion)", async () => {
+  const { decodeKeys } = await import("../src/cli/screen.js");
+  assert.deepEqual(decodeKeys("\t").map((k) => k.t), ["tab"]);
+  assert.deepEqual(decodeKeys("/c\t").map((k) => k.t), ["char", "char", "tab"]);
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });

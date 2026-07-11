@@ -48,6 +48,10 @@ export class FixedScreen {
   private get inputRow(): number {
     return this.rows;
   }
+  /** the blank breathing row just above the input — used for the suggestion strip */
+  private get suggestRow(): number {
+    return this.rows - 1;
+  }
 
   start(): void {
     if (this.started) return;
@@ -106,16 +110,30 @@ export class FixedScreen {
     stdout.write(at(this.statusRow, 1) + CLR_LINE + "  " + clip(this.status, this.cols - 2));
   }
 
-  /** Draw the input row with the cursor placed inside it. */
-  drawInput(buffer: string, cursor: number): void {
+  /** Draw the input row with the cursor placed inside it. Optional dim `ghost`
+   * text is shown after the buffer (autocomplete preview) without moving the cursor. */
+  drawInput(buffer: string, cursor: number, ghost = ""): void {
     const prompt = ` ${TEAL}»${RS} `;
     const promptW = 3;
     const avail = Math.max(4, this.cols - promptW - 1);
     let start = 0;
     if (cursor > avail) start = cursor - avail;
     const view = buffer.slice(start, start + avail);
-    stdout.write(at(this.inputRow, 1) + CLR_LINE + prompt + view);
+    const tail = ghost ? DIMC + clip(ghost, Math.max(0, avail - view.length)) + RS : "";
+    stdout.write(at(this.inputRow, 1) + CLR_LINE + prompt + view + tail);
     stdout.write(at(this.inputRow, promptW + 1 + (cursor - start)));
+  }
+
+  /** Suggestion strip on the breathing row above the input. Empty clears it.
+   * SAVE/REST keeps the input cursor put, so this never disturbs typing. */
+  drawSuggestions(labels: string[], active = 0): void {
+    stdout.write(SAVE);
+    stdout.write(at(this.suggestRow, 1) + CLR_LINE);
+    if (labels.length > 0) {
+      const parts = labels.map((n, i) => (i === active ? `${TEAL}${n}${RS}` : `${DIMC}${n}${RS}`));
+      stdout.write("  " + clip(parts.join("  "), this.cols - 2));
+    }
+    stdout.write(REST);
   }
 
   saveCursor(): void {
@@ -158,6 +176,7 @@ function clip(s: string, cols: number): string {
 export type Key =
   | { t: "char"; s: string }
   | { t: "enter" }
+  | { t: "tab" }
   | { t: "backspace" }
   | { t: "left" }
   | { t: "right" }
@@ -175,6 +194,7 @@ export function decodeKeys(s: string): Key[] {
     const c = s[i]!;
     if (c === "\x03") { keys.push({ t: "ctrlc" }); i++; continue; }
     if (c === "\r" || c === "\n") { keys.push({ t: "enter" }); i++; continue; }
+    if (c === "\t") { keys.push({ t: "tab" }); i++; continue; }
     if (c === "\x7f" || c === "\b") { keys.push({ t: "backspace" }); i++; continue; }
     if (c === "\x1b") {
       const rest = s.slice(i);

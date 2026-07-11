@@ -17,6 +17,7 @@ import {
   statusText, doctorText, configText, setConfig, permissions, toggleThink, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
 } from "./commands.js";
 import type { McpServerStatus } from "../tools/mcp.js";
+import { matchSlash, commonPrefix } from "./slash.js";
 
 const { accent, dim } = style;
 
@@ -65,7 +66,17 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
     let cur = 0;
     let hIdx = history.length;
     screen.showCursor();
-    screen.drawInput(buf, cur);
+
+    // Slash autocomplete: while typing a bare "/cmd" token, show the matching
+    // commands on the strip above the input and preview the best match as ghost
+    // text. Tab completes. Nothing renders for ordinary input.
+    const redraw = (): void => {
+      const names = matchSlash(buf).map((m) => m.name);
+      const ghost = names[0] && names[0].length > buf.length ? names[0].slice(buf.length) : "";
+      screen.drawInput(buf, cur, ghost);
+      screen.drawSuggestions(names.slice(0, 8));
+    };
+    redraw();
 
     disp.focus("edit", (k) => {
       switch (k.t) {
@@ -73,6 +84,15 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
           buf = buf.slice(0, cur) + k.s + buf.slice(cur);
           cur += k.s.length;
           break;
+        case "tab": {
+          const m = matchSlash(buf).map((x) => x.name);
+          if (m.length === 1) { buf = m[0]! + " "; cur = buf.length; }
+          else if (m.length > 1) {
+            const cp = commonPrefix(m);
+            if (cp.length > buf.length) { buf = cp; cur = buf.length; }
+          }
+          break;
+        }
         case "backspace":
           if (cur > 0) { buf = buf.slice(0, cur - 1) + buf.slice(cur); cur--; }
           break;
@@ -88,17 +108,20 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
           break;
         case "enter":
           if (buf.endsWith("\\")) { buf = buf.slice(0, -1) + "\n"; cur = buf.length; break; }
+          screen.drawSuggestions([]);
           screen.hideCursor();
           disp.focus("idle", null);
           resolve(buf);
           return;
         case "ctrlc":
+          screen.drawSuggestions([]);
           screen.hideCursor();
           disp.focus("idle", null);
           resolve(null);
           return;
         case "esc":
           if (opts.escCancels) {
+            screen.drawSuggestions([]);
             screen.hideCursor();
             disp.focus("idle", null);
             resolve(null);
@@ -108,7 +131,7 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
           cur = 0;
           break;
       }
-      screen.drawInput(buf, cur);
+      redraw();
     });
   });
 }

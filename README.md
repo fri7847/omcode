@@ -26,7 +26,7 @@ Recovery is ordered by token cost: **absorb in harness code (0 tokens) → one c
 - Permissions (allow / ask / deny), `.git/` writes blocked, per-session "always allow"
 - Context compaction: snip old tool results (0 tokens) → LLM condense (keeps recent turns verbatim)
 - Checkpoints + `/undo`
-- Fixed-chrome terminal UI: fixed header/status/input, scrolling output, live streaming, inline diff shown inside the approval prompt, arrow-key selection, esc-to-interrupt
+- Fixed-chrome terminal UI: fixed header/status/input, scrolling output, live streaming, inline diff shown inside the approval prompt, arrow-key selection, esc-to-interrupt, slash-command autocomplete (type `/`, Tab to complete)
 - A mini edit benchmark (`eval/`) reporting pass@1 / pass@2 / **edit-apply rate** / tokens-per-success
 
 ## Install
