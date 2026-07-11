@@ -232,7 +232,7 @@ export class Renderer {
   }
 
   help(): void {
-    const cmd = (name: string, desc: string) => `  ${accent(name.padEnd(9))}${desc}\n`;
+    const cmd = (name: string, desc: string) => `  ${accent(name.padEnd(13))}${desc}\n`;
     stdout.write(
       "\n" +
         `  ${bold("commands")}\n` +
