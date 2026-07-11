@@ -20,7 +20,9 @@ Recovery is ordered by token cost: **absorb in harness code (0 tokens) → one c
 ## Features
 
 - Minimal agent loop (`while tool_call`), append-only JSONL sessions, resume
-- Tools: `read` `glob` `grep` `edit` `write` `shell`
+- Tools: `read` `glob` `grep` `repo_map` `task` `edit` `write` `typecheck` `shell`
+- Architect/editor separation: architect mode is enforced read-only; isolated `task` scouts return only a compact report
+- Post-edit TypeScript diagnostics: clean checks add no context; failures are returned to the editor automatically
 - Permissions (allow / ask / deny), `.git/` writes blocked, per-session "always allow"
 - Context compaction: snip old tool results (0 tokens) → LLM condense (keeps recent turns verbatim)
 - Checkpoints + `/undo`
@@ -46,20 +48,22 @@ omcode --resume        # resume the latest session
 omcode --resume list   # pick a past session
 ```
 
-Configuration lives in `~/.omcode/config.json` (host / model / apiKey / numCtx). Environment variables override it: `OMCODE_HOST`, `OMCODE_MODEL`, `OMCODE_NUM_CTX`, `OLLAMA_API_KEY`.
+Configuration lives in `~/.omcode/config.json` (host / model / apiKey / numCtx). Environment variables override it: `OMCODE_HOST`, `OMCODE_MODEL`, `OMCODE_NUM_CTX`, `OMCODE_CONDENSE_MODEL`, `OMCODE_MODE`, `OLLAMA_API_KEY`.
 
 ```jsonc
 {
   "host": "https://ollama.com",   // or http://localhost:11434
   "model": "qwen3-coder:480b",
   "numCtx": 32768,
-  "stream": true
+  "stream": true,
+  "mode": "editor",
+  "condenseModel": "qwen3:8b"
 }
 ```
 
-In-session: `/model` (switch model), `/undo`, `/help`, `/exit`. During a turn, `esc` interrupts.
+In-session: `/model` (switch model), `/mode architect|editor`, `/undo`, `/help`, `/exit`. During a turn, `esc` interrupts.
 
-> **Hardware note:** on an 8 GB GPU (e.g. RTX 3070 Ti), an 8B model at `num_ctx=8192` is the practical local sweet spot; larger contexts spill to CPU and slow to a crawl. For serious work, use Ollama Cloud.
+> **Hardware note:** on an 8 GB GPU (e.g. RTX 3070 Ti), an 8B model at `num_ctx=8192` is the practical local sweet spot; larger contexts spill to CPU and slow to a crawl. On local NVIDIA hosts OMcode probes VRAM and warns about unsafe context settings without overriding an explicit setting. For serious work, use Ollama Cloud.
 
 ## Development
 

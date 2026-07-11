@@ -11,6 +11,7 @@ import { style } from "./render.js";
 import type { Renderer } from "./render.js";
 import type { AgentLoop, LoopUI, PermissionDecision } from "../core/loop.js";
 import type { ToolCall } from "../model/provider.js";
+import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
 
 const { accent, dim } = style;
 
@@ -119,7 +120,7 @@ function menu(
   return new Promise((resolve) => {
     let sel = Math.min(Math.max(start, 0), items.length - 1);
     screen.hideCursor();
-    stdout.write("\n  " + title + "\n");
+    stdout.write("  " + title + "\n"); // title (1 line) + N item lines
     draw(true);
 
     function draw(first: boolean): void {
@@ -136,11 +137,17 @@ function menu(
       const n = (sel + d + items.length) % items.length;
       if (n !== sel) { sel = n; draw(false); }
     }
+    /** erase the whole menu (title + items) so it doesn't linger in the chat —
+     * leaves the cursor where the menu started so a compact result can replace it. */
+    function erase(): void {
+      stdout.write("\r");
+      for (let i = 0; i < items.length + 1; i++) stdout.write("\x1b[1A\x1b[2K");
+    }
     disp.focus("edit", (k) => {
       if (k.t === "up") move(-1);
       else if (k.t === "down") move(1);
-      else if (k.t === "enter") { disp.focus("idle", null); resolve(sel); }
-      else if (k.t === "esc" || k.t === "ctrlc") { disp.focus("idle", null); resolve(null); }
+      else if (k.t === "enter") { erase(); disp.focus("idle", null); resolve(sel); }
+      else if (k.t === "esc" || k.t === "ctrlc") { erase(); disp.focus("idle", null); resolve(null); }
     });
   });
 }
@@ -154,6 +161,8 @@ export interface FixedDeps {
   listModels: () => Promise<string[]>;
   onModelPick: (model: string) => void;
   currentModel: () => string;
+  onModePick: (mode: AgentMode) => void;
+  currentMode: () => AgentMode;
   headerLine: () => string;
 }
 
@@ -195,9 +204,10 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
     if (raw === null) break;
     const input = raw.trim();
     if (!input) continue;
-    stdout.write("\n " + accent("»") + " " + input.replace(/\n/g, dim(" ⏎ ")) + "\n");
     history.push(input);
 
+    // Slash commands leave no `» command` echo — only their result stays in the
+    // chat (the transient command UI is erased), so the conversation stays clean.
     if (input === "/exit" || input === "/quit") break;
     if (input === "/help") { render.help(); continue; }
     if (input === "/undo") {
@@ -217,6 +227,18 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
       }
       continue;
     }
+    if (input.startsWith("/mode")) {
+      const mode = parseAgentMode(input.split(/\s+/, 2)[1]);
+      if (!mode) { render.notice("usage: /mode architect or /mode editor"); continue; }
+      loop.setMode(mode);
+      deps.onModePick(mode);
+      screen.setHeader(deps.headerLine());
+      render.notice(`mode → ${mode}`);
+      continue;
+    }
+
+    // real chat input — echoed as the user's turn, then run
+    stdout.write("\n " + accent("»") + " " + input.replace(/\n/g, dim(" ⏎ ")) + "\n");
 
     // ---- run a turn (esc aborts) ----
     deps.checkpoints.beginTurn();

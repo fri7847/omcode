@@ -16,6 +16,11 @@ export interface ToolContext {
   };
   /** report an applied file change so the UI can tally +N/-M for the session */
   onFileChange?(added: number, removed: number): void;
+  /**
+   * Optional deterministic post-edit check. It returns text only for a real
+   * failure, so successful edits add no diagnostic tokens to model context.
+   */
+  postEditDiagnostics?(): Promise<string | undefined>;
 }
 
 /** What a tool proposes to do — shown in the approval dialog before it runs. */

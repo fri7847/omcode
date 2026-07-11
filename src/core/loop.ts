@@ -8,6 +8,8 @@ import type { ToolRegistry, ToolContext, ToolPreview } from "../tools/registry.j
 import { LoopBreaker } from "../policy/loop-breaker.js";
 import type { SessionLog } from "./session.js";
 import type { ContextManager } from "./context.js";
+import { blocksTool, type AgentMode } from "./agent-mode.js";
+import { modeSection } from "../prompt/system.js";
 
 export type PermissionDecision = "yes" | "always" | "no";
 
@@ -31,6 +33,8 @@ export interface LoopConfig {
   numCtx: number;
   maxToolCallsPerTurn: number;
   think?: boolean;
+  /** Defaults to editor for backward compatibility with programmatic callers. */
+  mode?: AgentMode;
 }
 
 export interface TurnStats {
@@ -43,24 +47,31 @@ export interface TurnStats {
   lastPromptTokens: number;
 }
 
+/** Append-only session logger; subagents use an in-memory no-op sink. */
+export interface SessionSink {
+  append(type: string, data?: Record<string, unknown>): void;
+}
+
 export class AgentLoop {
   readonly messages: ChatMessage[] = [];
   private breaker = new LoopBreaker();
   private lastPromptTokens = 0;
   /** tools the user chose "always allow" for this session */
   private alwaysAllowed = new Set<string>();
+  private systemPrompt: string;
 
   constructor(
     private provider: Provider,
     private registry: ToolRegistry,
     private config: LoopConfig,
     private ui: LoopUI,
-    private session: SessionLog,
+    private session: SessionSink,
     private toolCtx: ToolContext,
     systemPrompt: string,
     private contextMgr?: ContextManager,
     resumeMessages?: ChatMessage[],
   ) {
+    this.systemPrompt = systemPrompt;
     if (resumeMessages && resumeMessages.length > 0) {
       this.messages.push(...resumeMessages);
       this.session.append("resumed", { messageCount: resumeMessages.length });
@@ -68,6 +79,19 @@ export class AgentLoop {
       this.messages.push({ role: "system", content: systemPrompt });
       this.session.append("system", { content: systemPrompt });
     }
+  }
+
+  setMode(mode: AgentMode): void {
+    this.config.mode = mode;
+    const system = this.messages.find((message) => message.role === "system");
+    if (system) {
+      // Replace our own tagged section rather than continually appending
+      // instructions as the user switches modes during a long session.
+      system.content = system.content.replace(/\n\n# Active mode: (?:architect|editor)[\s\S]*$/, "") + modeSection(mode);
+    } else {
+      this.messages.unshift({ role: "system", content: this.systemPrompt + modeSection(mode) });
+    }
+    this.session.append("mode", { mode });
   }
 
   async runTurn(userInput: string, signal?: AbortSignal): Promise<TurnStats> {
@@ -219,6 +243,14 @@ export class AgentLoop {
     }
     const tool = this.registry.get(call.name)!;
 
+    if (blocksTool(this.config.mode ?? "editor", tool.readOnly)) {
+      const msg =
+        `Architect mode blocks the mutating tool "${call.name}". ` +
+        `Finish the plan, then switch with /mode editor before making changes.`;
+      this.ui.onToolEnd(call, msg, true);
+      return { result: msg };
+    }
+
     // 3. Permission gate.
     if (tool.permission === "deny") {
       const msg = `Tool "${call.name}" is disabled by policy. Use a different tool.`;
@@ -259,6 +291,16 @@ export class AgentLoop {
     } catch (err) {
       crashed = true;
       result = `Tool "${call.name}" crashed: ${(err as Error).message}. This is a harness bug, not your mistake — try a different approach.`;
+    }
+    // Successful edits get deterministic compiler feedback before the model's
+    // next request. Clean checks deliberately add nothing to the context.
+    if (!crashed && /^(Applied:|Wrote )/.test(result) && this.toolCtx.postEditDiagnostics) {
+      try {
+        const diagnostics = await this.toolCtx.postEditDiagnostics();
+        if (diagnostics) result += `\n\n[post-edit diagnostics]\n${diagnostics}`;
+      } catch {
+        // Diagnostics are a recovery aid, never a reason to fail an edit.
+      }
     }
     if (verdict.action === "nudge") result += verdict.note;
     this.ui.onToolEnd(call, result, crashed);

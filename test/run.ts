@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import os from "node:os";
+import { z } from "zod";
 import { guard, stripThink, isDegenerate } from "../src/model/io-guard.js";
 import { LoopBreaker } from "../src/policy/loop-breaker.js";
 import { ToolRegistry } from "../src/tools/registry.js";
@@ -18,17 +19,33 @@ import { CheckpointStore } from "../src/core/checkpoint.js";
 import { loadMessages } from "../src/core/session.js";
 import type { ChatMessage } from "../src/model/provider.js";
 import { lineDiff, diffStat, renderDiff, collapseContext } from "../src/cli/diff.js";
+import { buildRepoMap, renderRepoMap } from "../src/core/repo-map.js";
+import { resolveSettingsFrom } from "../src/cli/config.js";
+import { blocksTool, parseAgentMode } from "../src/core/agent-mode.js";
+import { typecheckCommand } from "../src/tools/typecheck.js";
+import { makeTaskTool } from "../src/tools/task.js";
+import { contextWindowWarning, recommendedNumCtx } from "../src/model/runtime.js";
+import { AgentLoop, type LoopUI } from "../src/core/loop.js";
+import { SessionLog } from "../src/core/session.js";
+import type { Provider } from "../src/model/provider.js";
 
 let passed = 0;
-function test(name: string, fn: () => void): void {
-  try {
-    fn();
+const tests: { name: string; fn: () => void | Promise<void> }[] = [];
+function test(name: string, fn: () => void | Promise<void>): void {
+  tests.push({ name, fn });
+}
+
+async function runTests(): Promise<void> {
+  for (const { name, fn } of tests) {
+    try {
+      await fn();
     passed++;
     console.log(`  ok  ${name}`);
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(err);
-    process.exitCode = 1;
+    } catch (err) {
+      console.error(`FAIL  ${name}`);
+      console.error(err);
+      process.exitCode = 1;
+    }
   }
 }
 
@@ -160,6 +177,117 @@ test("tool schemas serialize to JSON Schema", () => {
   assert.equal(schemas[0]?.name, "read");
   const params = schemas[0]?.parameters as { properties?: Record<string, unknown> };
   assert.ok(params.properties?.["path"]);
+});
+
+// ---- repo map: compact multi-file routing without a parser dependency ----
+test("repo map: ranks imported shared modules and lists definitions", () => {
+  const map = buildRepoMap([
+    { path: "src/main.ts", content: 'import { add } from "./math";\nexport function run() { return add(1, 2); }' },
+    { path: "src/other.ts", content: 'import { add } from "./math";\nexport const value = add(3, 4);' },
+    { path: "src/math.ts", content: "export function add(a: number, b: number) { return a + b; }" },
+  ]);
+  assert.equal(map[0]?.path, "src/math.ts");
+  assert.match(renderRepoMap(map), /add:1/);
+});
+test("repo map: focus boosts the requested file or symbol", () => {
+  const map = buildRepoMap([
+    { path: "src/entry.ts", content: "export function entry() {}" },
+    { path: "src/worker.ts", content: "export function calculate() {}" },
+  ], { focus: "calculate" });
+  assert.equal(map[0]?.path, "src/worker.ts");
+});
+
+test("config: a dedicated condenser model is opt-in and env-overridable", () => {
+  const fromFile = resolveSettingsFrom({ model: "main", condenseModel: "small" }, {});
+  assert.equal(fromFile.condenseModel, "small");
+  const fromEnv = resolveSettingsFrom({ condenseModel: "small" }, { OMCODE_CONDENSE_MODEL: "tiny" });
+  assert.equal(fromEnv.condenseModel, "tiny");
+});
+test("agent mode: only architect blocks mutations", () => {
+  assert.equal(parseAgentMode("architect"), "architect");
+  assert.equal(parseAgentMode("bad"), undefined);
+  assert.equal(blocksTool("architect", false), true);
+  assert.equal(blocksTool("architect", true), false);
+  assert.equal(blocksTool("editor", false), false);
+});
+test("agent mode: the loop blocks a mutation before tool execution", async () => {
+  let executed = false;
+  let request = 0;
+  const provider: Provider = {
+    name: "fake",
+    async chat() {
+      request++;
+      return request === 1
+        ? { content: "", toolCalls: [{ id: "1", name: "mutate", arguments: {} }], doneReason: "tool_calls", usage: { promptTokens: 1, completionTokens: 1 } }
+        : { content: "plan complete", toolCalls: [], doneReason: "stop", usage: { promptTokens: 1, completionTokens: 1 } };
+    },
+  };
+  const registry = new ToolRegistry();
+  registry.register({
+    name: "mutate",
+    description: "test mutation",
+    schema: z.object({}),
+    readOnly: false,
+    permission: "allow",
+    async execute() { executed = true; return "mutated"; },
+  });
+  const results: string[] = [];
+  const ui: LoopUI = {
+    onAssistantText() {}, onToolStart() {}, onToolEnd: (_call, result) => results.push(result), onNotice() {},
+    async askPermission() { return "yes"; },
+  };
+  const session = new SessionLog(mkdtempSync(join(os.tmpdir(), "omcode-mode-")));
+  const loop = new AgentLoop(
+    provider, registry, { model: "fake", numCtx: 1024, maxToolCallsPerTurn: 3, mode: "architect" },
+    ui, session, { cwd: process.cwd() }, "system prompt",
+  );
+  await loop.runTurn("make a plan");
+  assert.equal(executed, false);
+  assert.match(results[0] ?? "", /Architect mode blocks/);
+});
+test("loop: appends post-edit diagnostics only after a successful mutation", async () => {
+  let request = 0;
+  const provider: Provider = {
+    name: "fake",
+    async chat() {
+      request++;
+      return request === 1
+        ? { content: "", toolCalls: [{ id: "1", name: "mutate", arguments: {} }], doneReason: "tool_calls", usage: { promptTokens: 1, completionTokens: 1 } }
+        : { content: "fixed", toolCalls: [], doneReason: "stop", usage: { promptTokens: 1, completionTokens: 1 } };
+    },
+  };
+  const registry = new ToolRegistry();
+  registry.register({
+    name: "mutate", description: "test mutation", schema: z.object({}), readOnly: false, permission: "allow",
+    async execute() { return "Applied: changed test.ts"; },
+  });
+  const results: string[] = [];
+  const ui: LoopUI = {
+    onAssistantText() {}, onToolStart() {}, onToolEnd: (_call, result) => results.push(result), onNotice() {},
+    async askPermission() { return "yes"; },
+  };
+  const session = new SessionLog(mkdtempSync(join(os.tmpdir(), "omcode-diag-")));
+  const loop = new AgentLoop(
+    provider, registry, { model: "fake", numCtx: 1024, maxToolCallsPerTurn: 3 }, ui, session,
+    { cwd: process.cwd(), postEditDiagnostics: async () => "TypeScript diagnostics failed: test.ts:1" }, "system prompt",
+  );
+  await loop.runTurn("edit it");
+  assert.match(results[0] ?? "", /\[post-edit diagnostics\]/);
+  assert.match(results[0] ?? "", /test\.ts:1/);
+});
+test("typecheck: invokes TypeScript through Node without a platform shell", () => {
+  const command = typecheckCommand("/repo", "node");
+  assert.equal(command.command, "node");
+  assert.deepEqual(command.args, [join("/repo", "node_modules", "typescript", "bin", "tsc"), "--noEmit", "--pretty", "false"]);
+});
+test("task tool: returns only the isolated runner report", async () => {
+  const task = makeTaskTool(async (description, maxToolCalls) => `report:${description}:${maxToolCalls}`);
+  assert.equal(await task.execute({ description: "find callers", maxToolCalls: 3 }, { cwd: process.cwd() }), "report:find callers:3");
+});
+test("runtime: warns instead of silently overcommitting local VRAM", () => {
+  assert.equal(recommendedNumCtx("qwen3:8b", 8_192), 8_192);
+  assert.match(contextWindowWarning("qwen3:8b", 32_768, 8_192) ?? "", /OMCODE_NUM_CTX=8192/);
+  assert.equal(contextWindowWarning("qwen3:8b", 8_192, 8_192), undefined);
 });
 
 // ---- applier: matching ladder ----
@@ -456,4 +584,6 @@ test("stream think-filter: dims think, shows answer, handles split tags", async 
   }
 });
 
-console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
+void runTests().then(() => {
+  console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
+});

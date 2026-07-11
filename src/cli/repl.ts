@@ -3,7 +3,7 @@
 //
 // Usage:  tsx src/cli/repl.ts [--resume [session.jsonl]]
 // Env:    OMCODE_HOST, OMCODE_MODEL, OMCODE_NUM_CTX, OMCODE_THINK,
-//         OMCODE_STREAM (default on), OLLAMA_API_KEY
+//         OMCODE_STREAM (default on), OMCODE_CONDENSE_MODEL, OLLAMA_API_KEY
 
 import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
@@ -18,6 +18,9 @@ import { ToolRegistry } from "../tools/registry.js";
 import { readTool } from "../tools/read.js";
 import { globTool } from "../tools/glob.js";
 import { grepTool } from "../tools/grep.js";
+import { repoMapTool } from "../tools/repo-map.js";
+import { typecheckFailure, typecheckTool } from "../tools/typecheck.js";
+import { makeTaskTool } from "../tools/task.js";
 import { makeEditTool, newEditStats } from "../tools/edit.js";
 import { writeTool } from "../tools/write.js";
 import { detectShell, makeShellTool } from "../tools/shell.js";
@@ -25,6 +28,8 @@ import { resolveSettings, saveConfig, configFile } from "./config.js";
 import { Renderer, style } from "./render.js";
 import { FixedScreen } from "./screen.js";
 import { runFixed } from "./interactive.js";
+import { parseAgentMode } from "../core/agent-mode.js";
+import { contextWindowWarning, detectNvidiaVramMiB } from "../model/runtime.js";
 
 interface MenuItem {
   label: string;
@@ -132,6 +137,8 @@ async function main(): Promise<void> {
   registry.register(readTool);
   registry.register(globTool);
   registry.register(grepTool);
+  registry.register(repoMapTool);
+  registry.register(typecheckTool);
   registry.register(makeEditTool(editStats));
   registry.register(writeTool);
   registry.register(makeShellTool(shell));
@@ -139,13 +146,23 @@ async function main(): Promise<void> {
   const checkpoints = new CheckpointStore();
   const render = new Renderer(NUM_CTX);
 
-  const loopConfig = { model: settings.model, numCtx: NUM_CTX, maxToolCallsPerTurn: 25, think: THINK };
+  const loopConfig = { model: settings.model, numCtx: NUM_CTX, maxToolCallsPerTurn: 25, think: THINK, mode: settings.mode };
+
+  // Only probe local Ollama. Cloud hosts do not use this machine's VRAM.
+  if (/localhost|127\.0\.0\.1|\[::1\]/.test(HOST)) {
+    const vramMiB = await detectNvidiaVramMiB();
+    const warning = vramMiB ? contextWindowWarning(loopConfig.model, NUM_CTX, vramMiB) : undefined;
+    if (warning) stdout.write(yellow(`  ‼ ${warning}\n`));
+  }
 
   const contextMgr = new ContextManager(
     { numCtx: NUM_CTX, reserve: 4096, keepRecent: 8 },
     async (transcript) => {
       const res = await provider.chat({
-        model: loopConfig.model,
+        // Optional small-model condenser follows Crush's split-model pattern:
+        // it lowers the cost of compression without changing the main agent.
+        // Falling back to the active model preserves existing configurations.
+        model: settings.condenseModel ?? loopConfig.model,
         messages: [{ role: "user", content: condensePrompt(transcript) }],
         tools: [],
         numCtx: NUM_CTX,
@@ -196,7 +213,45 @@ async function main(): Promise<void> {
   const session = new SessionLog();
   const cwd = process.cwd();
   const resumeMessages = await resolveResume(pick);
-  const systemPrompt = buildSystemPrompt(cwd, shell.label);
+  const systemPrompt = buildSystemPrompt(cwd, shell.label, settings.mode);
+
+  const toolCtx = {
+    cwd,
+    checkpoints,
+    onFileChange: (a: number, r: number) => render.fileChange(a, r),
+    postEditDiagnostics: () => typecheckFailure(cwd),
+  };
+
+  // Subtasks share the provider but get a fresh message list and a read-only
+  // registry. Only this short final report returns to the parent turn.
+  registry.register(makeTaskTool(async (description, maxToolCalls) => {
+    const scoutRegistry = new ToolRegistry();
+    scoutRegistry.register(readTool);
+    scoutRegistry.register(globTool);
+    scoutRegistry.register(grepTool);
+    scoutRegistry.register(repoMapTool);
+    let report = "";
+    const notices: string[] = [];
+    const scout = new AgentLoop(
+      provider,
+      scoutRegistry,
+      { model: loopConfig.model, numCtx: NUM_CTX, maxToolCallsPerTurn: maxToolCalls, think: THINK, mode: "architect" },
+      {
+        onAssistantText: (text) => { report = text; },
+        onToolStart() {}, onToolEnd() {},
+        onNotice: (notice) => notices.push(notice),
+        askPermission: async () => "no",
+      },
+      { append() {} },
+      { cwd },
+      buildSystemPrompt(cwd, shell.label, "architect"),
+    );
+    const stats = await scout.runTurn(
+      `Investigate this focused subtask using read-only tools. Return concise, actionable facts with exact file paths and symbols. Do not propose edits you did not verify.\n\n${description}`,
+    );
+    const suffix = notices.length ? `\nHarness notes: ${notices.join("; ")}` : "";
+    return `Isolated subtask report (${stats.toolCalls} tool calls):\n${report || "No final report was produced."}${suffix}`;
+  }));
 
   const makeLoop = (ui: LoopUI): AgentLoop =>
     new AgentLoop(
@@ -205,7 +260,7 @@ async function main(): Promise<void> {
       loopConfig,
       ui,
       session,
-      { cwd, checkpoints, onFileChange: (a, r) => render.fileChange(a, r) },
+      toolCtx,
       systemPrompt,
       contextMgr,
       resumeMessages,
@@ -229,8 +284,10 @@ async function main(): Promise<void> {
         saveConfig({ model: m, host: HOST });
       },
       currentModel: () => loopConfig.model,
+      onModePick: (mode) => { loopConfig.mode = mode; },
+      currentMode: () => loopConfig.mode,
       headerLine: () =>
-        `${accent("▍")}${bold("omcode")} ${dim(`· ${loopConfig.model} · ${HOST.replace(/^https?:\/\//, "")} · ${Math.round(NUM_CTX / 1000)}K · /help`)}`,
+        `${accent("▍")}${bold("omcode")} ${dim(`· ${loopConfig.mode} · ${loopConfig.model} · ${HOST.replace(/^https?:\/\//, "")} · ${Math.round(NUM_CTX / 1000)}K · /help`)}`,
     });
     return;
   }
@@ -282,6 +339,17 @@ async function main(): Promise<void> {
     }
     if (input === "/model") {
       await pickModel(await provider.listModels());
+      continue;
+    }
+    if (input.startsWith("/mode")) {
+      const mode = parseAgentMode(input.split(/\s+/, 2)[1]);
+      if (!mode) {
+        stdout.write(yellow("  ‼ 사용법: /mode architect 또는 /mode editor\n"));
+        continue;
+      }
+      loop.setMode(mode);
+      loopConfig.mode = mode;
+      stdout.write(dim(`  mode → ${cyan(mode)}\n`));
       continue;
     }
     if (input === "/undo") {

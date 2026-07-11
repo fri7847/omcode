@@ -4,8 +4,16 @@
 // on every request.
 
 import os from "node:os";
+import type { AgentMode } from "../core/agent-mode.js";
 
-export function buildSystemPrompt(cwd: string, shellLabel: string): string {
+export function modeSection(mode: AgentMode): string {
+  if (mode === "architect") {
+    return `\n\n# Active mode: architect\n- Investigate the repository and return a concrete implementation plan.\n- Read-only tools are available; the harness blocks edits, writes, and shell commands in this mode.\n- For multi-file work, begin with repo_map, then read the important files.\n- Do not claim a change was made. Explain the smallest safe editor-mode next step.`;
+  }
+  return `\n\n# Active mode: editor\n- Implement the requested change after inspecting the relevant files.\n- Use the normal approval flow for mutations.\n- For broad work, use repo_map before reading and editing multiple files.`;
+}
+
+export function buildSystemPrompt(cwd: string, shellLabel: string, mode: AgentMode = "editor"): string {
   return `You are OMcode, a coding agent that works in the user's repository using tools.
 
 # How to work
@@ -18,6 +26,8 @@ export function buildSystemPrompt(cwd: string, shellLabel: string): string {
 # Tool rules
 - Call tools through the tool-calling interface only. Never write tool calls as text, XML, or JSON in your reply.
 - Prefer glob to locate files, grep to search content, read to inspect files.
+- For multi-file tasks, call repo_map first for a compact dependency/definition overview, then read the relevant files.
+- Use task only for a focused read-only investigation that benefits from isolated context; its returned report is the only context that comes back.
 - shell runs ${shellLabel} commands and requires user approval. Use it only when file tools cannot do the job.
 
 # Editing files
@@ -26,9 +36,10 @@ export function buildSystemPrompt(cwd: string, shellLabel: string): string {
 - Include 2-3 surrounding lines in "search" so it matches only one place. If the same text appears more than once, pass startLine.
 - If an edit fails, the error tells you what the file actually contains — copy your next search block from that, do not retype from memory.
 - Use write only for new files or when told to rewrite a whole file.
+- After TypeScript edits, call typecheck to get deterministic compiler diagnostics before deciding whether another edit is needed.
 
 # Environment
 - Working directory: ${cwd}
 - OS: ${os.platform()} (${os.release()})
-- Date: ${new Date().toISOString().slice(0, 10)}`;
+- Date: ${new Date().toISOString().slice(0, 10)}` + modeSection(mode);
 }

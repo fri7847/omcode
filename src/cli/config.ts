@@ -5,6 +5,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import os from "node:os";
+import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
 
 export interface OmcodeConfig {
   host?: string;
@@ -13,6 +14,9 @@ export interface OmcodeConfig {
   numCtx?: number;
   stream?: boolean;
   think?: boolean;
+  /** Optional cheaper model used only for context condensation. */
+  condenseModel?: string;
+  mode?: AgentMode;
 }
 
 export interface Settings {
@@ -22,6 +26,8 @@ export interface Settings {
   numCtx: number;
   stream: boolean;
   think?: boolean;
+  condenseModel?: string;
+  mode: AgentMode;
 }
 
 export function configFile(): string {
@@ -42,9 +48,7 @@ export function saveConfig(patch: Partial<OmcodeConfig>): void {
   writeFileSync(configFile(), JSON.stringify(merged, null, 2) + "\n", "utf8");
 }
 
-export function resolveSettings(): Settings {
-  const file = loadConfig();
-  const env = process.env;
+export function resolveSettingsFrom(file: OmcodeConfig, env: NodeJS.ProcessEnv): Settings {
   const boolEnv = (v: string | undefined): boolean | undefined =>
     v === "true" ? true : v === "false" ? false : undefined;
 
@@ -55,5 +59,11 @@ export function resolveSettings(): Settings {
     numCtx: Number(env["OMCODE_NUM_CTX"] ?? file.numCtx ?? 32_768),
     stream: boolEnv(env["OMCODE_STREAM"]) ?? file.stream ?? true,
     think: boolEnv(env["OMCODE_THINK"]) ?? file.think,
+    condenseModel: env["OMCODE_CONDENSE_MODEL"] ?? file.condenseModel,
+    mode: parseAgentMode(env["OMCODE_MODE"] ?? file.mode) ?? "editor",
   };
+}
+
+export function resolveSettings(): Settings {
+  return resolveSettingsFrom(loadConfig(), process.env);
 }
