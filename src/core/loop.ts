@@ -89,7 +89,7 @@ export class AgentLoop {
     this.messages.length = 0;
     this.messages.push({
       role: "system",
-      content: this.systemPrompt + modeSection(this.config.mode ?? "check"),
+      content: this.systemPrompt + modeSection(this.config.mode ?? "ask"),
     });
     this.breaker.reset();
     this.lastPromptTokens = 0;
@@ -109,7 +109,7 @@ export class AgentLoop {
   newSession(session: SessionSink): void {
     this.session = session;
     this.messages.length = 0;
-    const content = this.systemPrompt + modeSection(this.config.mode ?? "check");
+    const content = this.systemPrompt + modeSection(this.config.mode ?? "ask");
     this.messages.push({ role: "system", content });
     this.breaker.reset();
     this.lastPromptTokens = 0;
@@ -151,7 +151,7 @@ export class AgentLoop {
     if (system) {
       // Replace our own tagged section rather than continually appending
       // instructions as the user switches modes during a long session.
-      system.content = system.content.replace(/\n\n# Active mode: (?:scout|check|flow)[\s\S]*$/, "") + modeSection(mode);
+      system.content = system.content.replace(/\n\n# Active mode: (?:read|ask|auto)[\s\S]*$/, "") + modeSection(mode);
     } else {
       this.messages.unshift({ role: "system", content: this.systemPrompt + modeSection(mode) });
     }
@@ -317,16 +317,16 @@ export class AgentLoop {
     }
     const tool = this.registry.get(call.name)!;
 
-    const mode = this.config.mode ?? "check";
+    const mode = this.config.mode ?? "ask";
     if (blocksTool(mode, tool.readOnly)) {
       const msg =
-        `Scout mode blocks the mutating tool "${call.name}". ` +
-        `Finish the plan, then switch with /mode check (or /mode flow) before making changes.`;
+        `Read mode blocks the mutating tool "${call.name}". ` +
+        `Finish the plan, then switch with /mode ask (or /mode auto) before making changes.`;
       this.ui.onToolEnd(call, msg, true);
       return { result: msg };
     }
 
-    // 3. Permission gate. flow mode auto-accepts what would otherwise ask.
+    // 3. Permission gate. auto mode auto-accepts what would otherwise ask.
     if (tool.permission === "deny") {
       const msg = `Tool "${call.name}" is disabled by policy. Use a different tool.`;
       this.ui.onToolEnd(call, msg, true);

@@ -121,7 +121,7 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
         case "enter": {
           if (buf.endsWith("\\")) { buf = buf.slice(0, -1) + "\n"; cur = buf.length; break; }
           // Submit the highlighted completion rather than the incomplete text, so
-          // Enter runs the command/argument shown ("/mod"→/mode, "/mode sc"→scout)
+          // Enter runs the command/argument shown ("/mod"→/mode, "/mode as"→ask)
           // instead of an accidental chat message. Empty argument tokens are left
           // alone so "/mode " + Enter falls through to the command's usage hint.
           const sug = slashSuggest(buf);
@@ -341,7 +341,7 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
     }
     if (input.startsWith("/mode")) {
       const mode = parseAgentMode(input.split(/\s+/, 2)[1]);
-      if (!mode) { render.notice("usage: /mode scout | check | flow"); continue; }
+      if (!mode) { render.notice("usage: /mode read | ask | auto"); continue; }
       loop.setMode(mode);
       deps.onModePick(mode);
       screen.setHeader(deps.headerLine());

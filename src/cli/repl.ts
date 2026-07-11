@@ -248,7 +248,7 @@ async function main(): Promise<void> {
   const envInfo = (): EnvInfo => ({
     ...env,
     model: loopConfig.model,
-    mode: loopConfig.mode ?? "check",
+    mode: loopConfig.mode ?? "ask",
     think: loopConfig.think, // live — /think mutates this
     sessionFile: session.file,
   });
@@ -278,7 +278,7 @@ async function main(): Promise<void> {
     const scout = new AgentLoop(
       provider,
       scoutRegistry,
-      { model: loopConfig.model, numCtx: NUM_CTX, maxToolCallsPerTurn: maxToolCalls, think: THINK, mode: "scout" },
+      { model: loopConfig.model, numCtx: NUM_CTX, maxToolCallsPerTurn: maxToolCalls, think: THINK, mode: "read" },
       {
         onAssistantText: (text) => { report = text; },
         onToolStart() {}, onToolEnd() {},
@@ -287,7 +287,7 @@ async function main(): Promise<void> {
       },
       { append() {} },
       { cwd },
-      buildSystemPrompt(cwd, shell.label, "scout"),
+      buildSystemPrompt(cwd, shell.label, "read"),
     );
     const stats = await scout.runTurn(
       `Investigate this focused subtask using read-only tools. Return concise, actionable facts with exact file paths and symbols. Do not propose edits you did not verify.\n\n${description}`,
@@ -313,7 +313,7 @@ async function main(): Promise<void> {
       const sub = new AgentLoop(
         provider,
         subRegistry,
-        { model: def.model ?? loopConfig.model, numCtx: NUM_CTX, maxToolCallsPerTurn: 12, think: THINK, mode: "scout" },
+        { model: def.model ?? loopConfig.model, numCtx: NUM_CTX, maxToolCallsPerTurn: 12, think: THINK, mode: "read" },
         {
           onAssistantText: (text) => { report = text; },
           onToolStart() {}, onToolEnd() {},
@@ -322,7 +322,7 @@ async function main(): Promise<void> {
         },
         { append() {} },
         { cwd },
-        buildSystemPrompt(cwd, shell.label, "scout") + `\n\n# Your role\n${def.prompt}`,
+        buildSystemPrompt(cwd, shell.label, "read") + `\n\n# Your role\n${def.prompt}`,
       );
       const stats = await sub.runTurn(
         `${task}\n\nReturn concise, actionable findings with exact file paths and symbols. Do not propose edits you did not verify.`,
@@ -463,7 +463,7 @@ async function main(): Promise<void> {
     if (input.startsWith("/mode")) {
       const mode = parseAgentMode(input.split(/\s+/, 2)[1]);
       if (!mode) {
-        stdout.write(yellow("  ‼ 사용법: /mode scout | check | flow\n"));
+        stdout.write(yellow("  ‼ 사용법: /mode read | ask | auto\n"));
         continue;
       }
       loop.setMode(mode);

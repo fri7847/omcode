@@ -5,14 +5,14 @@
 export interface SlashCommand {
   name: string;
   desc: string;
-  /** first-argument completions (e.g. /mode → scout|check|flow) */
+  /** first-argument completions (e.g. /mode → read|ask|auto) */
   args?: string[];
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "/init", desc: "저장소 분석해 AGENTS.md 생성" },
   { name: "/model", desc: "모델 전환" },
-  { name: "/mode", desc: "scout·check·flow 전환", args: ["scout", "check", "flow"] },
+  { name: "/mode", desc: "read·ask·auto 전환", args: ["read", "ask", "auto"] },
   { name: "/think", desc: "추론 모드 토글", args: ["on", "off"] },
   { name: "/compact", desc: "컨텍스트 압축" },
   { name: "/clear", desc: "대화 초기화" },

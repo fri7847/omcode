@@ -21,7 +21,7 @@ Recovery is ordered by token cost: **absorb in harness code (0 tokens) → one c
 
 - Minimal agent loop (`while tool_call`), append-only JSONL sessions, resume
 - Tools: `read` `glob` `grep` `repo_map` `task` `edit` `write` `diagnostics` `web_fetch` `shell`
-- Permission modes (`/mode`): **scout** (read-only, enforced), **check** (approve each change, default), **flow** (auto-apply); isolated `task` scouts return only a compact report
+- Permission modes (`/mode`): **read** (read-only, enforced), **ask** (approve each change, default), **auto** (auto-apply); isolated `task` scouts return only a compact report
 - Post-edit TypeScript diagnostics: clean checks add no context; failures are returned to the editor automatically
 - Permissions (allow / ask / deny), `.git/` writes blocked, per-session "always allow"
 - Context compaction: snip old tool results (0 tokens) → LLM condense (keeps recent turns verbatim)
@@ -67,7 +67,7 @@ In-session commands:
 | --- | --- |
 | `/init` | analyze the repo and write an `AGENTS.md` guide |
 | `/model` | switch model (lists what the host serves; saves the choice) |
-| `/mode scout\|check\|flow` | scout=read-only · check=approve each · flow=auto-apply |
+| `/mode read\|ask\|auto` | read=read-only · ask=approve each · auto=auto-apply |
 | `/compact` | summarize older turns now to reclaim context |
 | `/clear` | reset the conversation (model/mode kept) |
 | `/cost` | session token + context usage |

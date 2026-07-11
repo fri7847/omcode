@@ -203,18 +203,20 @@ test("config: a dedicated condenser model is opt-in and env-overridable", () => 
   const fromEnv = resolveSettingsFrom({ condenseModel: "small" }, { OMCODE_CONDENSE_MODEL: "tiny" });
   assert.equal(fromEnv.condenseModel, "tiny");
 });
-test("agent mode: only scout blocks mutations; flow auto-accepts", async () => {
+test("agent mode: only read blocks mutations; auto auto-accepts", async () => {
   const { autoAccepts } = await import("../src/core/agent-mode.js");
-  assert.equal(parseAgentMode("scout"), "scout");
-  assert.equal(parseAgentMode("architect"), "scout"); // legacy alias
-  assert.equal(parseAgentMode("editor"), "check"); // legacy alias
+  assert.equal(parseAgentMode("read"), "read");
+  assert.equal(parseAgentMode("scout"), "read"); // legacy alias
+  assert.equal(parseAgentMode("architect"), "read"); // legacy alias
+  assert.equal(parseAgentMode("editor"), "ask"); // legacy alias
+  assert.equal(parseAgentMode("flow"), "auto"); // legacy alias
   assert.equal(parseAgentMode("bad"), undefined);
-  assert.equal(blocksTool("scout", false), true);
-  assert.equal(blocksTool("scout", true), false);
-  assert.equal(blocksTool("check", false), false);
-  assert.equal(blocksTool("flow", false), false);
-  assert.equal(autoAccepts("flow"), true);
-  assert.equal(autoAccepts("check"), false);
+  assert.equal(blocksTool("read", false), true);
+  assert.equal(blocksTool("read", true), false);
+  assert.equal(blocksTool("ask", false), false);
+  assert.equal(blocksTool("auto", false), false);
+  assert.equal(autoAccepts("auto"), true);
+  assert.equal(autoAccepts("ask"), false);
 });
 test("agent mode: the loop blocks a mutation before tool execution", async () => {
   let executed = false;
@@ -244,12 +246,12 @@ test("agent mode: the loop blocks a mutation before tool execution", async () =>
   };
   const session = new SessionLog(mkdtempSync(join(os.tmpdir(), "omcode-mode-")));
   const loop = new AgentLoop(
-    provider, registry, { model: "fake", numCtx: 1024, maxToolCallsPerTurn: 3, mode: "scout" },
+    provider, registry, { model: "fake", numCtx: 1024, maxToolCallsPerTurn: 3, mode: "read" },
     ui, session, { cwd: process.cwd() }, "system prompt",
   );
   await loop.runTurn("make a plan");
   assert.equal(executed, false);
-  assert.match(results[0] ?? "", /Scout mode blocks/);
+  assert.match(results[0] ?? "", /Read mode blocks/);
 });
 test("loop: appends post-edit diagnostics only after a successful mutation", async () => {
   let request = 0;
@@ -666,7 +668,7 @@ test("buildSystemPrompt: includes the profile addendum", async () => {
   const { buildSystemPrompt } = await import("../src/prompt/system.js");
   const { profileFor } = await import("../src/model/profiles.js");
   const add = profileFor("gemma4:31b").systemAddendum!;
-  const prompt = buildSystemPrompt("/tmp", "bash", "check", add);
+  const prompt = buildSystemPrompt("/tmp", "bash", "ask", add);
   assert.ok(prompt.includes("Note for this model"));
 });
 
@@ -759,7 +761,7 @@ test("commands: lint/test report 'none' outside a recognized project", async () 
 test("statusText: renders model/host/context with percent", async () => {
   const { statusText } = await import("../src/cli/commands.js");
   const out = statusText(
-    { host: "https://ollama.com", model: "qwen3-coder:480b", mode: "check", numCtx: 32768, stream: true, hasApiKey: true, sessionFile: "/s.jsonl", cwd: "/w" },
+    { host: "https://ollama.com", model: "qwen3-coder:480b", mode: "ask", numCtx: 32768, stream: true, hasApiKey: true, sessionFile: "/s.jsonl", cwd: "/w" },
     16384,
   );
   assert.match(out, /qwen3-coder:480b/);
@@ -770,7 +772,7 @@ test("setConfig: rejects unknown keys and bad values without writing", async () 
   const { setConfig } = await import("../src/cli/commands.js");
   assert.match(setConfig("bogus", "x"), /unknown key/);
   assert.match(setConfig("numCtx", "abc"), /must be a number/);
-  assert.match(setConfig("mode", "sideways"), /scout, check, or flow/);
+  assert.match(setConfig("mode", "sideways"), /read, ask, or auto/);
   assert.match(setConfig("stream", "yes"), /true or false/);
 });
 
@@ -900,13 +902,13 @@ test("slash: slashSuggest completes command names and first arguments", async ()
   // command name
   assert.deepEqual(slashSuggest("/mod"), { token: "/mod", candidates: ["/mode", "/model"] });
   // first argument (space typed → all options; partial → filtered)
-  assert.deepEqual(slashSuggest("/mode "), { token: "", candidates: ["scout", "check", "flow"] });
-  assert.deepEqual(slashSuggest("/mode sc"), { token: "sc", candidates: ["scout"] });
+  assert.deepEqual(slashSuggest("/mode "), { token: "", candidates: ["read", "ask", "auto"] });
+  assert.deepEqual(slashSuggest("/mode as"), { token: "as", candidates: ["ask"] });
   assert.deepEqual(slashSuggest("/think o")!.candidates, ["on", "off"]);
-  assert.equal(slashSuggest("/mode scout "), null); // second arg → nothing
+  assert.equal(slashSuggest("/mode ask "), null); // second arg → nothing
   assert.equal(slashSuggest("/status "), null); // command takes no args
   // applying a completion replaces the trailing token
-  assert.equal(applyCompletion("/mode sc", "sc", "scout"), "/mode scout");
+  assert.equal(applyCompletion("/mode as", "as", "ask"), "/mode ask");
   assert.equal(applyCompletion("/mod", "/mod", "/mode"), "/mode");
   assert.equal(commandTakesArgs("/mode"), true);
   assert.equal(commandTakesArgs("/status"), false);
