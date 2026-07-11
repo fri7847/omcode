@@ -48,7 +48,7 @@ omcode --resume        # resume the latest session
 omcode --resume list   # pick a past session
 ```
 
-Configuration lives in `~/.omcode/config.json` (host / model / apiKey / numCtx). Environment variables override it: `OMCODE_HOST`, `OMCODE_MODEL`, `OMCODE_NUM_CTX`, `OMCODE_CONDENSE_MODEL`, `OMCODE_MODE`, `OLLAMA_API_KEY`.
+Configuration lives in `~/.omcode/config.json` (host / model / apiKey / numCtx). Environment variables override it: `OMCODE_HOST`, `OMCODE_MODEL`, `OMCODE_NUM_CTX`, `OMCODE_CONDENSE_MODEL`, `OMCODE_MODE`, `OMCODE_MAX_OUTPUT` (hard output-token cap; off by default), `OLLAMA_API_KEY`.
 
 ```jsonc
 {

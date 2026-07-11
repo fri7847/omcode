@@ -45,6 +45,12 @@ export interface ChatRequest {
   onDelta?: (text: string) => void;
   /** external abort (esc-to-interrupt) — cancels the in-flight request */
   signal?: AbortSignal;
+  /**
+   * Hard cap on generated tokens (Ollama num_predict). undefined = server
+   * default (no cap). A backstop against runaway generation; set generously so
+   * it never truncates a legitimate large file write.
+   */
+  maxOutput?: number;
 }
 
 /** Thrown when a turn is interrupted by the user (esc). */

@@ -584,6 +584,34 @@ test("stream think-filter: dims think, shows answer, handles split tags", async 
   }
 });
 
+// ---- truncation handling + output cap ----
+test("loop: surfaces a notice when the response is truncated (done_reason=length)", async () => {
+  const provider: Provider = {
+    name: "fake",
+    async chat() {
+      return { content: "partial answer that got cut", toolCalls: [], doneReason: "length", usage: { promptTokens: 1, completionTokens: 1 } };
+    },
+  };
+  const notices: string[] = [];
+  const ui: LoopUI = {
+    onAssistantText() {}, onToolStart() {}, onToolEnd() {}, onNotice: (m) => notices.push(m),
+    async askPermission() { return "yes"; },
+  };
+  const session = new SessionLog(mkdtempSync(join(os.tmpdir(), "omcode-trunc-")));
+  const loop = new AgentLoop(
+    provider, new ToolRegistry(), { model: "fake", numCtx: 1024, maxToolCallsPerTurn: 3 }, ui, session,
+    { cwd: process.cwd() }, "system prompt",
+  );
+  await loop.runTurn("do it");
+  assert.ok(notices.some((n) => /cut off|output limit/i.test(n)));
+});
+test("config: OMCODE_MAX_OUTPUT parses into settings.maxOutput", async () => {
+  const { resolveSettingsFrom } = await import("../src/cli/config.js");
+  assert.equal(resolveSettingsFrom({}, { OMCODE_MAX_OUTPUT: "8192" } as NodeJS.ProcessEnv).maxOutput, 8192);
+  assert.equal(resolveSettingsFrom({ maxOutput: 4096 }, {} as NodeJS.ProcessEnv).maxOutput, 4096);
+  assert.equal(resolveSettingsFrom({}, {} as NodeJS.ProcessEnv).maxOutput, undefined);
+});
+
 // ---- multi-language diagnostics ----
 test("projectDiagnostics: returns 'none' when no project type is present", async () => {
   const { projectDiagnostics } = await import("../src/tools/diagnostics.js");

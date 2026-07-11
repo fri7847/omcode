@@ -100,7 +100,10 @@ export class OllamaProvider implements Provider {
         },
       })),
       stream: false,
-      options: { num_ctx: req.numCtx },
+      options:
+        req.maxOutput !== undefined
+          ? { num_ctx: req.numCtx, num_predict: req.maxOutput }
+          : { num_ctx: req.numCtx },
     };
     if (req.think !== undefined) body["think"] = req.think;
 

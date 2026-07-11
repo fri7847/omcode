@@ -17,6 +17,8 @@ export interface OmcodeConfig {
   /** Optional cheaper model used only for context condensation. */
   condenseModel?: string;
   mode?: AgentMode;
+  /** Hard output-token cap (Ollama num_predict); omit for no cap. */
+  maxOutput?: number;
 }
 
 export interface Settings {
@@ -28,6 +30,7 @@ export interface Settings {
   think?: boolean;
   condenseModel?: string;
   mode: AgentMode;
+  maxOutput?: number;
 }
 
 export function configFile(): string {
@@ -61,6 +64,7 @@ export function resolveSettingsFrom(file: OmcodeConfig, env: NodeJS.ProcessEnv):
     think: boolEnv(env["OMCODE_THINK"]) ?? file.think,
     condenseModel: env["OMCODE_CONDENSE_MODEL"] ?? file.condenseModel,
     mode: parseAgentMode(env["OMCODE_MODE"] ?? file.mode) ?? "editor",
+    maxOutput: env["OMCODE_MAX_OUTPUT"] ? Number(env["OMCODE_MAX_OUTPUT"]) : file.maxOutput,
   };
 }
 

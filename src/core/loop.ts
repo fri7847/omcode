@@ -33,6 +33,8 @@ export interface LoopConfig {
   numCtx: number;
   maxToolCallsPerTurn: number;
   think?: boolean;
+  /** hard output-token cap (Ollama num_predict); undefined = no cap */
+  maxOutput?: number;
   /** Defaults to editor for backward compatibility with programmatic callers. */
   mode?: AgentMode;
 }
@@ -129,6 +131,7 @@ export class AgentLoop {
           tools: this.registry.schemas(),
           numCtx: this.config.numCtx,
           think: this.config.think,
+          maxOutput: this.config.maxOutput,
           onDelta,
           signal,
         });
@@ -167,6 +170,15 @@ export class AgentLoop {
         source: guarded.toolCallSource,
         doneReason: result.doneReason,
       });
+
+      // Truncation: the response hit the output limit and is incomplete — a cut
+      // tool call or half-written file would otherwise be used silently.
+      if (result.doneReason === "length") {
+        this.ui.onNotice(
+          "response was cut off at the output limit — it may be incomplete. " +
+            "Raise num_ctx / OMCODE_MAX_OUTPUT, or split the task into smaller steps.",
+        );
+      }
 
       if (guarded.toolCallSource.startsWith("recovered")) {
         stats.recoveredCalls += guarded.toolCalls.length;

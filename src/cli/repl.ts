@@ -156,6 +156,7 @@ async function main(): Promise<void> {
     maxToolCallsPerTurn: 25,
     think: THINK ?? profile.think,
     mode: settings.mode,
+    maxOutput: settings.maxOutput,
   };
 
   // Only probe local Ollama. Cloud hosts do not use this machine's VRAM.
