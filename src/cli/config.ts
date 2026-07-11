@@ -19,6 +19,8 @@ export interface OmcodeConfig {
   mode?: AgentMode;
   /** Hard output-token cap (Ollama num_predict); omit for no cap. */
   maxOutput?: number;
+  /** MCP servers to connect at startup, keyed by name (Claude Desktop format). */
+  mcpServers?: Record<string, { command: string; args?: string[]; env?: Record<string, string>; cwd?: string }>;
 }
 
 export interface Settings {

@@ -79,10 +79,25 @@ In-session commands:
 | `/doctor` | health-check the setup (host reachable, model present, VRAM) |
 | `/config` | show config, or `/config <key> <value>` to persist one |
 | `/permissions` | list tool permissions, or `allow`/`ask <tool>` for the session |
+| `/mcp` | connected MCP servers and their discovered tools |
 | `/undo` | revert the files the last turn changed |
 | `/help` · `/exit` | help · quit |
 
 During a turn, `esc` interrupts. On startup OMcode auto-loads `AGENTS.md` (or `CLAUDE.md`) from the working directory into the system prompt, so `/init` pays off on the next run.
+
+### MCP servers
+
+OMcode can connect to [MCP](https://modelcontextprotocol.io) servers over stdio and bridge their tools into the model's toolset (namespaced `mcp__<server>__<tool>`, permission `ask`). Add an `mcpServers` object to `~/.omcode/config.json` (same shape as Claude Desktop), then check `/mcp`:
+
+```jsonc
+{
+  "mcpServers": {
+    "fs": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] }
+  }
+}
+```
+
+Failed servers are reported and skipped — they never block startup.
 
 > **Hardware note:** on an 8 GB GPU (e.g. RTX 3070 Ti), an 8B model at `num_ctx=8192` is the practical local sweet spot; larger contexts spill to CPU and slow to a crawl. On local NVIDIA hosts OMcode probes VRAM and warns about unsafe context settings without overriding an explicit setting. For serious work, use Ollama Cloud.
 

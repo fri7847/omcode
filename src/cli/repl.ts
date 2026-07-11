@@ -26,7 +26,8 @@ import { makeTaskTool } from "../tools/task.js";
 import { makeEditTool, newEditStats } from "../tools/edit.js";
 import { writeTool } from "../tools/write.js";
 import { detectShell, makeShellTool } from "../tools/shell.js";
-import { resolveSettings, saveConfig, configFile } from "./config.js";
+import { connectMcpServers } from "../tools/mcp.js";
+import { resolveSettings, loadConfig, saveConfig, configFile } from "./config.js";
 import { Renderer, style } from "./render.js";
 import { FixedScreen } from "./screen.js";
 import { runFixed } from "./interactive.js";
@@ -34,7 +35,7 @@ import { parseAgentMode } from "../core/agent-mode.js";
 import { contextWindowWarning, detectNvidiaVramMiB } from "../model/runtime.js";
 import {
   INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject, loadProjectContext,
-  statusText, doctorText, configText, setConfig, permissions, type EnvInfo,
+  statusText, doctorText, configText, setConfig, permissions, mcpStatusText, type EnvInfo,
 } from "./commands.js";
 
 interface MenuItem {
@@ -292,6 +293,15 @@ async function main(): Promise<void> {
     return `Isolated subtask report (${stats.toolCalls} tool calls):\n${report || "No final report was produced."}${suffix}`;
   }));
 
+  // Connect configured MCP servers and bridge their tools into the registry
+  // (no-op with no config). Best-effort: failures are reported, never fatal.
+  const mcp = await connectMcpServers(loadConfig().mcpServers ?? {}, registry);
+  for (const s of mcp.status()) {
+    stdout.write(s.ok
+      ? dim(`  ◆ mcp ${s.name}: ${s.tools.length} tool(s)\n`)
+      : yellow(`  ‼ mcp ${s.name} failed: ${s.error}\n`));
+  }
+
   const makeLoop = (ui: LoopUI): AgentLoop =>
     new AgentLoop(
       provider,
@@ -322,6 +332,7 @@ async function main(): Promise<void> {
       sessionFile: session.file,
       detectVram: () => detectNvidiaVramMiB(),
       newSessionLog: () => new SessionLog(),
+      mcpStatus: () => mcp.status(),
       listModels: () => provider.listModels(),
       onModelPick: (m) => {
         loopConfig.model = m;
@@ -334,6 +345,7 @@ async function main(): Promise<void> {
       headerLine: () =>
         `${accent("▍")}${bold("omcode")} ${dim(`· ${loopConfig.mode} · ${loopConfig.model} · ${HOST.replace(/^https?:\/\//, "")} · ${Math.round(NUM_CTX / 1000)}K · /help`)}`,
     });
+    mcp.close();
     return;
   }
 
@@ -396,6 +408,7 @@ async function main(): Promise<void> {
       continue;
     }
     if (input.startsWith("/permissions")) { stdout.write("\n" + permissions(loop, input.split(/\s+/).slice(1)) + "\n"); continue; }
+    if (input === "/mcp") { stdout.write("\n" + mcpStatusText(mcp.status()) + "\n"); continue; }
     if (input === "/new") { session = new SessionLog(); loop.newSession(session); stdout.write(dim(`  ✦ new session → ${session.file}\n\n`)); continue; }
     if (input === "/model") {
       await pickModel(await provider.listModels());
@@ -468,6 +481,7 @@ async function main(): Promise<void> {
       }
     }
   }
+  mcp.close();
   rl.close();
 }
 

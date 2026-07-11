@@ -250,6 +250,7 @@ export class Renderer {
         cmd("/doctor", "설정 점검 (호스트 연결·모델·VRAM)") +
         cmd("/config", "설정 보기 / `/config <키> <값>`으로 저장") +
         cmd("/permissions", "도구 권한 보기 / allow·ask 세션 재정의") +
+        cmd("/mcp", "연결된 MCP 서버·도구 상태") +
         cmd("/undo", "마지막 턴이 바꾼 파일 되돌리기") +
         cmd("/help", "이 도움말") +
         cmd("/exit", "종료") +

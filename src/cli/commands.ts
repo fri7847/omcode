@@ -10,6 +10,7 @@ import { projectDiagnostics, projectTest } from "../tools/diagnostics.js";
 import { loadConfig, saveConfig, configFile } from "./config.js";
 import { parseAgentMode } from "../core/agent-mode.js";
 import { contextWindowWarning } from "../model/runtime.js";
+import type { McpServerStatus } from "../tools/mcp.js";
 import type { AgentLoop } from "../core/loop.js";
 
 /** Just the slice of CheckpointStore /diff needs (keeps the frontends decoupled). */
@@ -199,6 +200,20 @@ export function permissions(loop: AgentLoop, args: string[]): string {
     return `  ${p.name.padEnd(12)} ${eff.padEnd(16)} ${p.readOnly ? "read-only" : "mutating"}`;
   });
   return ["tool permissions  (·  /permissions allow|ask <tool>  overrides for this session)", ...rows].join("\n");
+}
+
+/** /mcp — configured MCP servers, their connection status and discovered tools. */
+export function mcpStatusText(statuses: McpServerStatus[]): string {
+  if (statuses.length === 0) {
+    return `no MCP servers configured — add an "mcpServers" object to ${configFile()}\n` +
+      `  example: { "mcpServers": { "fs": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] } } }`;
+  }
+  const rows = statuses.map((s) =>
+    s.ok
+      ? `  ✓ ${s.name}  (${s.tools.length} tool${s.tools.length === 1 ? "" : "s"}${s.tools.length ? ": " + s.tools.join(", ") : ""})`
+      : `  ‼ ${s.name}  failed: ${s.error ?? "unknown error"}`,
+  );
+  return ["mcp servers", ...rows].join("\n");
 }
 
 /** Read the project's agent guide (AGENTS.md preferred) to inject into the system

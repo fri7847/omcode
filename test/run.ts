@@ -768,6 +768,60 @@ test("setConfig: rejects unknown keys and bad values without writing", async () 
   assert.match(setConfig("stream", "yes"), /true or false/);
 });
 
+// ---- /mcp: real stdio client against a mock MCP server ----
+const MOCK_MCP_SERVER = `
+let buf = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (d) => {
+  buf += d;
+  let nl;
+  while ((nl = buf.indexOf("\\n")) >= 0) {
+    const line = buf.slice(0, nl).trim();
+    buf = buf.slice(nl + 1);
+    if (!line) continue;
+    const msg = JSON.parse(line);
+    if (msg.method === "initialize") reply(msg.id, { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "mock", version: "1" } });
+    else if (msg.method === "tools/list") reply(msg.id, { tools: [{ name: "echo", description: "echoes text", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } }] });
+    else if (msg.method === "tools/call") reply(msg.id, { content: [{ type: "text", text: "echo: " + (msg.params && msg.params.arguments ? msg.params.arguments.text : "") }] });
+  }
+});
+function reply(id, result) { process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n"); }
+`;
+test("mcp: connects, discovers tools, and calls one via stdio JSON-RPC", async () => {
+  const { connectMcpServers } = await import("../src/tools/mcp.js");
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-mcp-"));
+  const server = join(dir, "mock.mjs");
+  writeFileSync(server, MOCK_MCP_SERVER, "utf8");
+
+  const reg = new ToolRegistry();
+  const mgr = await connectMcpServers({ mock: { command: "node", args: [server] } }, reg);
+  try {
+    const st = mgr.status();
+    assert.equal(st.length, 1);
+    assert.equal(st[0]!.ok, true, st[0]!.error);
+    assert.deepEqual(st[0]!.tools, ["echo"]);
+
+    const tool = reg.get("mcp__mock__echo");
+    assert.ok(tool, "bridged tool should be registered");
+    // the model sees the server's real JSON Schema, not a zod-derived one
+    assert.deepEqual(reg.schemas().find((s) => s.name === "mcp__mock__echo")?.parameters,
+      { type: "object", properties: { text: { type: "string" } }, required: ["text"] });
+    const out = await tool!.execute({ text: "hi" }, { cwd: dir });
+    assert.match(out, /echo: hi/);
+  } finally {
+    mgr.close();
+  }
+});
+test("mcp: a server that fails to start is reported, not thrown", async () => {
+  const { connectMcpServers } = await import("../src/tools/mcp.js");
+  const reg = new ToolRegistry();
+  const mgr = await connectMcpServers({ bad: { command: "definitely-not-a-real-binary-xyz" } }, reg);
+  const st = mgr.status();
+  assert.equal(st[0]!.ok, false);
+  assert.equal(reg.list().length, 0);
+  mgr.close();
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });

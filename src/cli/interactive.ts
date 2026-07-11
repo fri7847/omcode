@@ -14,8 +14,9 @@ import type { ToolCall } from "../model/provider.js";
 import { parseAgentMode, type AgentMode } from "../core/agent-mode.js";
 import {
   INIT_PROMPT, clearConversation, compactNow, sessionDiff, lintProject, testProject,
-  statusText, doctorText, configText, setConfig, permissions, type EnvInfo,
+  statusText, doctorText, configText, setConfig, permissions, mcpStatusText, type EnvInfo,
 } from "./commands.js";
+import type { McpServerStatus } from "../tools/mcp.js";
 
 const { accent, dim } = style;
 
@@ -172,6 +173,7 @@ export interface FixedDeps {
   sessionFile: string;
   detectVram: () => Promise<number | undefined>;
   newSessionLog: () => { append(type: string, data?: Record<string, unknown>): void; file: string };
+  mcpStatus: () => McpServerStatus[];
   listModels: () => Promise<string[]>;
   onModelPick: (model: string) => void;
   currentModel: () => string;
@@ -245,6 +247,7 @@ export async function runFixed(deps: FixedDeps): Promise<void> {
       continue;
     }
     if (input.startsWith("/permissions")) { stdout.write("\n" + permissions(loop, input.split(/\s+/).slice(1)) + "\n"); continue; }
+    if (input === "/mcp") { stdout.write("\n" + mcpStatusText(deps.mcpStatus()) + "\n"); continue; }
     if (input === "/new") { const s = deps.newSessionLog(); loop.newSession(s); sessionFile = s.file; render.notice("new session → " + s.file); continue; }
     if (input === "/undo") {
       const restored = await deps.checkpoints.undoLastTurn();

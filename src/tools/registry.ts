@@ -32,6 +32,13 @@ export interface Tool<I = unknown> {
   name: string;
   description: string;
   schema: z.ZodType<I>;
+  /**
+   * Raw JSON Schema to advertise to the model instead of deriving one from
+   * `schema`. Used by MCP tools, whose parameter schema comes from the server
+   * (not zod) and is validated server-side. When set, `schema` should accept
+   * any object so local validation passes the arguments straight through.
+   */
+  rawParameters?: Record<string, unknown>;
   readOnly: boolean;
   permission: Permission;
   execute(input: I, ctx: ToolContext): Promise<string>;
@@ -61,7 +68,7 @@ export class ToolRegistry {
     return this.list().map((t) => ({
       name: t.name,
       description: t.description,
-      parameters: z.toJSONSchema(t.schema) as Record<string, unknown>,
+      parameters: t.rawParameters ?? (z.toJSONSchema(t.schema) as Record<string, unknown>),
     }));
   }
 
