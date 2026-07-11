@@ -125,15 +125,14 @@ export class FixedScreen {
   }
 
   /** Suggestion strip on the breathing row above the input. Empty clears it.
-   * SAVE/REST keeps the input cursor put, so this never disturbs typing. */
+   * Does NOT use the DECSC/DECRC save slot (the caller owns that) — it just
+   * paints the row; the caller repositions the cursor with drawInput afterward. */
   drawSuggestions(labels: string[], active = 0): void {
-    stdout.write(SAVE);
     stdout.write(at(this.suggestRow, 1) + CLR_LINE);
     if (labels.length > 0) {
       const parts = labels.map((n, i) => (i === active ? `${TEAL}${n}${RS}` : `${DIMC}${n}${RS}`));
       stdout.write("  " + clip(parts.join("  "), this.cols - 2));
     }
-    stdout.write(REST);
   }
 
   saveCursor(): void {

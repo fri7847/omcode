@@ -37,7 +37,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 export function matchSlash(buf: string): SlashCommand[] {
   if (!buf.startsWith("/") || /\s/.test(buf)) return [];
   const q = buf.toLowerCase();
-  return SLASH_COMMANDS.filter((c) => c.name.startsWith(q));
+  // Shorter names first so an exact/shorter command (/mode) ranks above a longer
+  // one that merely shares its prefix (/model) — keeps the ghost preview correct.
+  return SLASH_COMMANDS
+    .filter((c) => c.name.startsWith(q))
+    .sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name));
 }
 
 /** Longest common prefix of names — how far Tab can complete an ambiguous set. */

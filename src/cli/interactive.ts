@@ -73,8 +73,10 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
     const redraw = (): void => {
       const names = matchSlash(buf).map((m) => m.name);
       const ghost = names[0] && names[0].length > buf.length ? names[0].slice(buf.length) : "";
-      screen.drawInput(buf, cur, ghost);
+      // suggestions first, input last — drawInput does the final (absolute) cursor
+      // placement, and neither touches the DECSC slot the outer loop relies on.
       screen.drawSuggestions(names.slice(0, 8));
+      screen.drawInput(buf, cur, ghost);
     };
     redraw();
 
@@ -106,13 +108,19 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
         case "down":
           if (hIdx < history.length) { hIdx++; buf = history[hIdx] ?? ""; cur = buf.length; }
           break;
-        case "enter":
+        case "enter": {
           if (buf.endsWith("\\")) { buf = buf.slice(0, -1) + "\n"; cur = buf.length; break; }
+          // If typing a slash prefix (e.g. "/mod"), submit the highlighted match
+          // ("/mode") instead of the incomplete text — so Enter runs the command
+          // shown, not an accidental chat message.
+          const names = matchSlash(buf).map((m) => m.name);
+          const out = names.length > 0 && !names.includes(buf) ? names[0]! : buf;
           screen.drawSuggestions([]);
           screen.hideCursor();
           disp.focus("idle", null);
-          resolve(buf);
+          resolve(out);
           return;
+        }
         case "ctrlc":
           screen.drawSuggestions([]);
           screen.hideCursor();
