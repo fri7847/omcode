@@ -17,7 +17,7 @@ import {
   statusText, doctorText, configText, setConfig, permissions, toggleThink, mcpStatusText, agentsText, newAgentScaffold, type EnvInfo,
 } from "./commands.js";
 import type { McpServerStatus } from "../tools/mcp.js";
-import { matchSlash, commonPrefix } from "./slash.js";
+import { slashSuggest, applyCompletion, commonPrefix, commandTakesArgs } from "./slash.js";
 
 const { accent, dim } = style;
 
@@ -67,15 +67,22 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
     let hIdx = history.length;
     screen.showCursor();
 
-    // Slash autocomplete: while typing a bare "/cmd" token, show the matching
-    // commands on the strip above the input and preview the best match as ghost
+    // Slash autocomplete: while typing "/cmd" (then its first argument), show the
+    // candidates on the strip above the input and preview the best one as ghost
     // text. Tab completes. Nothing renders for ordinary input.
     const redraw = (): void => {
-      const names = matchSlash(buf).map((m) => m.name);
-      const ghost = names[0] && names[0].length > buf.length ? names[0].slice(buf.length) : "";
+      const sug = slashSuggest(buf);
+      const cands = sug ? sug.candidates : [];
+      const top = cands[0] ?? "";
+      // ghost-preview the best match, but only once a token is being typed — an
+      // empty arg token ("/mode ") shows the option strip without implying a default
+      const ghost =
+        sug && sug.token.length > 0 && top.length > sug.token.length && top.toLowerCase().startsWith(sug.token.toLowerCase())
+          ? top.slice(sug.token.length)
+          : "";
       // suggestions first, input last — drawInput does the final (absolute) cursor
       // placement, and neither touches the DECSC slot the outer loop relies on.
-      screen.drawSuggestions(names.slice(0, 8));
+      screen.drawSuggestions(cands.slice(0, 8));
       screen.drawInput(buf, cur, ghost);
     };
     redraw();
@@ -87,11 +94,14 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
           cur += k.s.length;
           break;
         case "tab": {
-          const m = matchSlash(buf).map((x) => x.name);
-          if (m.length === 1) { buf = m[0]! + " "; cur = buf.length; }
-          else if (m.length > 1) {
-            const cp = commonPrefix(m);
-            if (cp.length > buf.length) { buf = cp; cur = buf.length; }
+          const sug = slashSuggest(buf);
+          if (sug && sug.candidates.length === 1) {
+            buf = applyCompletion(buf, sug.token, sug.candidates[0]!);
+            if (commandTakesArgs(buf)) buf += " "; // open first-argument entry
+            cur = buf.length;
+          } else if (sug && sug.candidates.length > 1) {
+            const completed = applyCompletion(buf, sug.token, commonPrefix(sug.candidates));
+            if (completed.length > buf.length) { buf = completed; cur = buf.length; }
           }
           break;
         }
@@ -110,11 +120,17 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
           break;
         case "enter": {
           if (buf.endsWith("\\")) { buf = buf.slice(0, -1) + "\n"; cur = buf.length; break; }
-          // If typing a slash prefix (e.g. "/mod"), submit the highlighted match
-          // ("/mode") instead of the incomplete text — so Enter runs the command
-          // shown, not an accidental chat message.
-          const names = matchSlash(buf).map((m) => m.name);
-          const out = names.length > 0 && !names.includes(buf) ? names[0]! : buf;
+          // Submit the highlighted completion rather than the incomplete text, so
+          // Enter runs the command/argument shown ("/mod"→/mode, "/mode sc"→scout)
+          // instead of an accidental chat message. Empty argument tokens are left
+          // alone so "/mode " + Enter falls through to the command's usage hint.
+          const sug = slashSuggest(buf);
+          const minTok = buf.includes(" ") ? 1 : 2; // don't complete a bare "/"
+          let out = buf;
+          if (sug && sug.candidates.length > 0 && sug.token.length >= minTok) {
+            const exact = sug.candidates.some((c) => c.toLowerCase() === sug.token.toLowerCase());
+            if (!exact) out = applyCompletion(buf, sug.token, sug.candidates[0]!);
+          }
           screen.drawSuggestions([]);
           screen.hideCursor();
           disp.focus("idle", null);
@@ -145,7 +161,10 @@ function editLine(screen: FixedScreen, disp: Dispatcher, opts: EditOpts = {}): P
 }
 
 /** Arrow-key selection, drawn inline in the scrolling output region — no screen
- * swap, previous output stays visible. ↑↓/j k move, Enter picks, Esc cancels. */
+ * swap, previous output stays visible. The visible rows are WINDOWED to fit the
+ * region (a 34-item list on a short terminal would otherwise overflow and break
+ * the cursor math), scrolling as the selection moves. ↑↓ move, Enter picks, Esc
+ * cancels. The drawn block is always exactly `win + 1` lines. */
 function menu(
   screen: FixedScreen,
   disp: Dispatcher,
@@ -154,30 +173,45 @@ function menu(
   start = 0,
 ): Promise<number | null> {
   return new Promise((resolve) => {
-    let sel = Math.min(Math.max(start, 0), items.length - 1);
+    const clamp = (n: number, lo: number, hi: number) => Math.min(Math.max(n, lo), hi);
+    // leave room for the title line and a little margin inside the scroll region
+    const cap = Math.max(3, screen.regionBottom - screen.regionTop - 1);
+    const win = Math.min(items.length, cap);
+    let sel = clamp(start, 0, items.length - 1);
+    let top = clamp(sel - (win >> 1), 0, Math.max(0, items.length - win));
+
     screen.hideCursor();
-    stdout.write("  " + title + "\n"); // title (1 line) + N item lines
+    stdout.write("  " + title + "\n"); // title (1 line) + win item lines
     draw(true);
 
     function draw(first: boolean): void {
-      if (!first) stdout.write(`\x1b[${items.length}A`);
-      items.forEach((it, i) => {
-        const on = i === sel;
+      if (!first) stdout.write(`\x1b[${win}A`); // back to the first window row
+      for (let r = 0; r < win; r++) {
+        const idx = top + r;
+        const it = items[idx]!;
+        const on = idx === sel;
         const pointer = on ? `${accent("❯")} ` : "  ";
         const label = on ? accent(it.label) : it.label;
         const hint = it.hint ? ` ${dim(it.hint)}` : "";
-        stdout.write(`\x1b[2K    ${pointer}${label}${hint}\n`);
-      });
+        // scroll affordances on the edge rows when there is more off-screen
+        let more = "";
+        if (r === 0 && top > 0) more = dim(`  ↑${top}`);
+        else if (r === win - 1 && top + win < items.length) more = dim(`  ↓${items.length - top - win}`);
+        stdout.write(`\x1b[2K    ${pointer}${label}${hint}${more}\n`);
+      }
     }
     function move(d: number): void {
-      const n = (sel + d + items.length) % items.length;
-      if (n !== sel) { sel = n; draw(false); }
+      const n = clamp(sel + d, 0, items.length - 1);
+      if (n === sel) return;
+      sel = n;
+      if (sel < top) top = sel;
+      else if (sel >= top + win) top = sel - win + 1;
+      draw(false);
     }
-    /** erase the whole menu (title + items) so it doesn't linger in the chat —
-     * leaves the cursor where the menu started so a compact result can replace it. */
+    /** erase the whole menu (title + window) so it doesn't linger in the chat. */
     function erase(): void {
       stdout.write("\r");
-      for (let i = 0; i < items.length + 1; i++) stdout.write("\x1b[1A\x1b[2K");
+      for (let i = 0; i < win + 1; i++) stdout.write("\x1b[1A\x1b[2K");
     }
     disp.focus("edit", (k) => {
       if (k.t === "up") move(-1);

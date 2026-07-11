@@ -889,11 +889,27 @@ test("slash: matchSlash filters by prefix, only for a bare command token", async
   // shorter/exact ranks first: "/mod" must suggest /mode before /model
   assert.deepEqual(matchSlash("/mod").map((c) => c.name), ["/mode", "/model"]);
   assert.equal(matchSlash("/mode")[0]!.name, "/mode"); // exact stays on top (no stray ghost)
-  assert.equal(matchSlash("/model x").length, 0); // has args → no suggestions
+  assert.equal(matchSlash("/model x").length, 0); // has args → no name suggestions
   assert.equal(matchSlash("hello").length, 0); // not a slash
   assert.deepEqual(matchSlash("/perm").map((c) => c.name), ["/permissions"]);
   assert.equal(commonPrefix(["/compact", "/config", "/cost"]), "/co");
   assert.equal(commonPrefix(["/model"]), "/model");
+});
+test("slash: slashSuggest completes command names and first arguments", async () => {
+  const { slashSuggest, applyCompletion, commandTakesArgs } = await import("../src/cli/slash.js");
+  // command name
+  assert.deepEqual(slashSuggest("/mod"), { token: "/mod", candidates: ["/mode", "/model"] });
+  // first argument (space typed → all options; partial → filtered)
+  assert.deepEqual(slashSuggest("/mode "), { token: "", candidates: ["scout", "check", "flow"] });
+  assert.deepEqual(slashSuggest("/mode sc"), { token: "sc", candidates: ["scout"] });
+  assert.deepEqual(slashSuggest("/think o")!.candidates, ["on", "off"]);
+  assert.equal(slashSuggest("/mode scout "), null); // second arg → nothing
+  assert.equal(slashSuggest("/status "), null); // command takes no args
+  // applying a completion replaces the trailing token
+  assert.equal(applyCompletion("/mode sc", "sc", "scout"), "/mode scout");
+  assert.equal(applyCompletion("/mod", "/mod", "/mode"), "/mode");
+  assert.equal(commandTakesArgs("/mode"), true);
+  assert.equal(commandTakesArgs("/status"), false);
 });
 
 test("screen: decodeKeys recognizes tab (drives autocomplete completion)", async () => {
