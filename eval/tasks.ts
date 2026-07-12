@@ -136,4 +136,73 @@ export const tasks: EvalTask[] = [
       return { pass: false, detail: "throw/invalid age missing or original body damaged" };
     },
   },
+
+  // ---- harder tier: stress multi-file discovery, block disambiguation,
+  // indentation precision, and multi-part edits (where a fuzzy applier + tools
+  // + multi-turn should beat a single-shot editor). ----
+  {
+    name: "rename-across-callers",
+    files: {
+      "geo.js": `function computeArea(r) {\n  return 3.14159 * r * r;\n}\nmodule.exports = { computeArea };\n`,
+      "shapes.js": `const { computeArea } = require("./geo");\nfunction circleInfo(r) {\n  return "area=" + computeArea(r);\n}\nmodule.exports = { circleInfo };\n`,
+      "report.js": `const { computeArea } = require("./geo");\nconsole.log("A:", computeArea(5));\n`,
+    },
+    prompt:
+      "Rename the function computeArea to circleArea everywhere it is defined, imported, or called across the whole project.",
+    async check(dir) {
+      const all = (await content(dir, "geo.js")) + (await content(dir, "shapes.js")) + (await content(dir, "report.js"));
+      if (/function circleArea\(/.test(all) && !/computeArea/.test(all) && (all.match(/circleArea/g) ?? []).length >= 4)
+        return { pass: true, detail: "ok" };
+      return { pass: false, detail: "computeArea still present or not renamed in all 3 files" };
+    },
+  },
+  {
+    name: "precise-block",
+    files: {
+      "validators.js":
+        `function validateEmail(v) {\n  if (!v) return false;\n  return v.includes("@");\n}\n\n` +
+        `function validatePhone(v) {\n  if (!v) return false;\n  return /^[0-9]+$/.test(v);\n}\n\n` +
+        `function validateZip(v) {\n  if (!v) return false;\n  return /^[0-9]+$/.test(v);\n}\n\n` +
+        `module.exports = { validateEmail, validatePhone, validateZip };\n`,
+    },
+    prompt:
+      "In validators.js, make validatePhone (and ONLY validatePhone) also return false when v has fewer than 10 characters. Do not touch validateEmail or validateZip.",
+    async check(dir) {
+      const c = await content(dir, "validators.js");
+      const phone = c.split("function validatePhone")[1]?.split("function validateZip")[0] ?? "";
+      const zip = c.split("function validateZip")[1] ?? "";
+      const hasLen = /\.length\s*<\s*10|<\s*10/.test(phone);
+      if (hasLen && !/length/.test(zip) && /validateEmail/.test(c)) return { pass: true, detail: "ok" };
+      return { pass: false, detail: "length check missing in validatePhone or leaked into another function" };
+    },
+  },
+  {
+    name: "nested-indent-insert",
+    files: {
+      "service.py": `def handle(req):\n    if req.valid:\n        for item in req.items:\n            process(item)\n    return "done"\n`,
+    },
+    prompt:
+      "In service.py, inside the for loop right after the process(item) line, add a new line that calls log(item). It must sit at the same indentation as process(item).",
+    async check(dir) {
+      const c = await content(dir, "service.py");
+      // log(item) must be indented 12 spaces (same as process(item)) and structure intact
+      if (/\n {12}log\(item\)/.test(c) && /\n {12}process\(item\)/.test(c) && /return "done"/.test(c))
+        return { pass: true, detail: "ok" };
+      return { pass: false, detail: "log(item) missing or wrong indentation (must match process(item))" };
+    },
+  },
+  {
+    name: "multi-part-edit",
+    files: {
+      "api.js": `function send(url, retries, verbose) {\n  if (verbose) {\n    console.log("sending", url);\n  }\n  return fetch(url, retries);\n}\n\nsend("/data", 3, true);\n`,
+    },
+    prompt:
+      'In api.js, remove the unused "verbose" feature: delete the verbose parameter, delete the whole "if (verbose) { ... }" block, and update the call site to send("/data", 3). Leave the fetch line unchanged.',
+    async check(dir) {
+      const c = await content(dir, "api.js");
+      if (!/verbose/.test(c) && !/console\.log/.test(c) && /send\("\/data", 3\)/.test(c) && /fetch\(url, retries\)/.test(c))
+        return { pass: true, detail: "ok" };
+      return { pass: false, detail: "verbose/console.log still present, or call site/fetch damaged" };
+    },
+  },
 ];

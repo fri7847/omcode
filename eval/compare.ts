@@ -26,6 +26,7 @@ const arg = (flag: string, def: string): string => {
 const MODEL = arg("--model", "qwen3:8b");
 const OLLAMA = arg("--host", "http://localhost:11434");
 let API_KEY = process.env["OLLAMA_API_KEY"] ?? "";
+const TASK_FROM = Number(arg("--from", "0"));
 const TASK_LIMIT = Number(arg("--tasks", String(tasks.length)));
 const ONLY = arg("--only", "").split(",").filter(Boolean);
 const PER_TASK_TIMEOUT = 300_000; // local models are slow
@@ -153,7 +154,7 @@ async function main(): Promise<void> {
   const active: Adapter[] = [];
   for (const a of use) if (await a.available()) active.push(a); else console.log(`  ${a.name}: not available (skipped)`);
 
-  const battery = tasks.slice(0, TASK_LIMIT);
+  const battery = tasks.slice(TASK_FROM, TASK_FROM + TASK_LIMIT);
   console.log(`\nmodel: ${MODEL}  ·  tasks: ${battery.length}  ·  harnesses: ${active.map((a) => a.name).join(", ")}\n`);
 
   const scores: Record<string, Score> = {};
