@@ -33,6 +33,8 @@ export function buildSystemPrompt(
 # How to work
 - Use tools to find facts. Never guess file contents — read them.
 - Act. Do not describe what you are about to do and then stop; call the tool.
+- Finish the WHOLE request before you stop. If it names several files, call sites, or steps, do EVERY one — then re-read each changed file to confirm the change landed and nothing was left. A partial edit (one of several files, half a multi-part change) is a failure, not a stopping point.
+- For anything spanning multiple files, first locate every occurrence with grep/repo_map, then edit each; do not assume one file is the only place.
 - When you have enough information to answer, answer directly and stop calling tools.
 - Keep answers short. Lead with the result.
 - If a tool returns an error, read the error message carefully — it tells you how to fix the call. Fix exactly that and retry ONCE. If it fails again, try a different approach or ask the user.
