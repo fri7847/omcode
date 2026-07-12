@@ -68,7 +68,7 @@ export class ToolRegistry {
     return this.list().map((t) => ({
       name: t.name,
       description: t.description,
-      parameters: t.rawParameters ?? (z.toJSONSchema(t.schema) as Record<string, unknown>),
+      parameters: stripSchemaNoise(t.rawParameters ?? (z.toJSONSchema(t.schema) as Record<string, unknown>)),
     }));
   }
 
@@ -107,6 +107,29 @@ export class ToolRegistry {
     }
     return { ok: true, input: parsed.data };
   }
+}
+
+/**
+ * Drop the inert `$schema` metadata key that z.toJSONSchema emits. The model
+ * never reads it, but it costs tokens on every request (Ollama Cloud has no
+ * cross-request prompt cache, so the whole tool block is re-billed each turn).
+ * Deliberately conservative — only `$schema`, so nothing that could affect a
+ * backend's constrained decoding (e.g. additionalProperties) is touched.
+ */
+function stripSchemaNoise(schema: Record<string, unknown>): Record<string, unknown> {
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        if (k === "$schema") continue;
+        out[k] = walk(val);
+      }
+      return out;
+    }
+    return v;
+  };
+  return walk(schema) as Record<string, unknown>;
 }
 
 /** Cap a tool result; the truncation notice tells the model how to get more. */

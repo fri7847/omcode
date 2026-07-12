@@ -982,6 +982,16 @@ test("applier: startLine resolves EXACT duplicate matches (not just fuzzy)", () 
   assert.ok(!amb.ok && /multiple locations/.test(amb.error));
 });
 
+test("registry: schemas() strips inert $schema (per-request token noise)", () => {
+  const reg = new ToolRegistry();
+  reg.register(readTool);
+  const schemas = reg.schemas();
+  const json = JSON.stringify(schemas);
+  assert.ok(!json.includes("$schema"), "advertised tool schema should not carry $schema");
+  // real params (descriptions/constraints) are preserved
+  assert.match(json, /path/);
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });
