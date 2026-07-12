@@ -992,6 +992,36 @@ test("registry: schemas() strips inert $schema (per-request token noise)", () =>
   assert.match(json, /path/);
 });
 
+test("edit: batches multiple edits in one call; reports partial failure", async () => {
+  const { makeEditTool, newEditStats } = await import("../src/tools/edit.js");
+  const dir = mkdtempSync(join(os.tmpdir(), "omcode-edit-"));
+  const f = join(dir, "api.js");
+  writeFileSync(f, 'function send(url, retries, verbose) {\n  if (verbose) {\n    console.log("x");\n  }\n  return fetch(url, retries);\n}\n', "utf8");
+  const tool = makeEditTool(newEditStats());
+  const out = await tool.execute(
+    {
+      edits: [
+        { path: "api.js", search: "function send(url, retries, verbose) {", replace: "function send(url, retries) {" },
+        { path: "api.js", search: '  if (verbose) {\n    console.log("x");\n  }\n', replace: "" },
+      ],
+    },
+    { cwd: dir },
+  );
+  assert.match(out, /Applied all 2 edits/);
+  const c = readFileSync(f, "utf8");
+  assert.ok(!c.includes("verbose") && !c.includes("console.log") && c.includes("fetch(url, retries)"), "both edits applied");
+  // partial failure: one good edit, one that cannot match
+  const out2 = await tool.execute(
+    { edits: [
+      { path: "api.js", search: "  return fetch(url, retries);", replace: "  return fetch(url);" },
+      { path: "api.js", search: "NONEXISTENT_TEXT_ZZZ", replace: "y" },
+    ] },
+    { cwd: dir },
+  );
+  assert.match(out2, /Applied 1\/2/);
+  assert.match(out2, /FAILED/);
+});
+
 void runTests().then(() => {
   console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 });

@@ -48,10 +48,10 @@ export function buildSystemPrompt(
 - web_fetch retrieves the text of a specific http(s) URL (docs, API references). It cannot search — you must supply the exact URL. Requires user approval.
 
 # Editing files
-- ALWAYS read a file before editing it.
-- edit replaces exact text: put the current text in "search" (copied exactly from the file, WITHOUT the line-number prefixes that read shows) and the new text in "replace".
-- Include 2-3 surrounding lines in "search" so it matches only one place. If the same text appears more than once, pass startLine.
-- If an edit fails, the error tells you what the file actually contains — copy your next search block from that, do not retype from memory.
+- ALWAYS read the file(s) first. Then make the change with ONE edit call.
+- edit takes an "edits" array. Put EVERY change the task needs into that single call — every part of a multi-part change, and every file involved. Do not make one edit and stop; batch them all so nothing is left half-done.
+- Each edit has "search" (the EXACT current text, copied from read WITHOUT the line-number prefixes, with 2-3 surrounding lines so it is unique) and "replace" (the new text). If the same text appears more than once, add startLine.
+- The result lists each edit as applied or FAILED. If some failed, the error shows what the file actually contains — copy your next search from that and call edit again with ONLY the failed edits. Do not retype from memory.
 - Use write only for new files or when told to rewrite a whole file.
 - After editing code, call diagnostics to get deterministic checks for the project's language (TypeScript/Go/Python) before deciding whether another edit is needed.
 

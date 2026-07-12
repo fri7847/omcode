@@ -383,7 +383,7 @@ export class AgentLoop {
     }
     // Successful edits get deterministic compiler feedback before the model's
     // next request. Clean checks deliberately add nothing to the context.
-    if (!crashed && /^(Applied:|Wrote )/.test(result) && this.toolCtx.postEditDiagnostics) {
+    if (!crashed && /^(Applied[: ]|Wrote )/.test(result) && this.toolCtx.postEditDiagnostics) {
       try {
         const diagnostics = await this.toolCtx.postEditDiagnostics();
         if (diagnostics) result += `\n\n[post-edit diagnostics]\n${diagnostics}`;
