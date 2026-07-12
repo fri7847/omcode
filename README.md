@@ -29,6 +29,27 @@ Recovery is ordered by token cost: **absorb in harness code (0 tokens) → one c
 - Fixed-chrome terminal UI: fixed header/status/input, scrolling output, live streaming, inline diff shown inside the approval prompt, arrow-key selection, esc-to-interrupt, slash-command autocomplete (type `/`, Tab to complete)
 - A mini edit benchmark (`eval/`) reporting pass@1 / pass@2 / **edit-apply rate** / tokens-per-success
 
+## Benchmarks & honest positioning
+
+OMcode ships two benchmarks, and the results are reported here straight — including where OMcode loses.
+
+**Harness scorecard** — `npm run bench`, no model. Exercises the defense mechanisms in isolation (io-guard recovery, fuzzy-applier absorption, loop-breaker intervention). Scores **18/18**, with **10/10 mistakes absorbed at zero extra tokens**. This is the thing OMcode is built to do, and it does it.
+
+**Cross-harness comparison** — `eval/compare.ts`. Holds the model constant (local Ollama) and varies the harness: same edit tasks, same deterministic grader, OMcode vs [aider](https://github.com/Aider-AI/aider).
+
+| setting | OMcode | aider |
+| --- | --- | --- |
+| strong model (`qwen3-coder:480b`), 8 tasks | 8/8 | 8/8, **~10× fewer tokens** |
+| weak model (`qwen3:8b`), simple edits | passes the whitespace/tab trap aider fails | 3/4 |
+| weak model (`qwen3:8b`), hard multi-part edits (×3 runs) | **~33%** | **~100%** |
+
+Read that honestly:
+
+- **The strength is narrow and real.** On a *weak* model making *whitespace/format* mistakes, OMcode's fuzzy applier absorbs edits that break a stricter tool — the harness thesis holds exactly there.
+- **The costs are real too.** OMcode is a general tool-using agent (read → edit → verify over several turns), so it spends **far more tokens** than a single-shot editor, and on **weak models with complex multi-part edits it is markedly less reliable** than aider's file-in-context single-shot editing. (Nudges and batched edits helped a little but did not close this — measured, not assumed.)
+
+OMcode is a **general, MCP-capable agent** for defending the open-model I/O boundary — closer to Claude Code than to aider — not a specialized editor. Want the cheapest, most reliable pure-edit tool for a weak local model? Use aider. Want a general agent that recovers malformed tool calls, absorbs botched edits, and breaks loops on models that were never trained for your harness? That's OMcode.
+
 ## Install
 
 Requires Node.js 20+ and [Ollama](https://ollama.com) (local) or an Ollama Cloud API key.
