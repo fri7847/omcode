@@ -55,7 +55,7 @@ OMcode is a **general, MCP-capable agent** for defending the open-model I/O boun
 Requires Node.js 20+ and [Ollama](https://ollama.com) (local) or an Ollama Cloud API key.
 
 ```bash
-git clone https://github.com/<you>/omcode
+git clone https://github.com/fri7847/omcode
 cd omcode
 npm install
 npm link          # registers the global `omcode` command
