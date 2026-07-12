@@ -28,6 +28,7 @@ const OLLAMA = arg("--host", "http://localhost:11434");
 let API_KEY = process.env["OLLAMA_API_KEY"] ?? "";
 const TASK_FROM = Number(arg("--from", "0"));
 const TASK_LIMIT = Number(arg("--tasks", String(tasks.length)));
+const REPEAT = Math.max(1, Number(arg("--repeat", "1"))); // runs per task, to denoise weak models
 const ONLY = arg("--only", "").split(",").filter(Boolean);
 const PER_TASK_TIMEOUT = 300_000; // local models are slow
 const OMCODE_REPL = join(dirname(new URL(import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, "$1"), "..", "src", "cli", "repl.ts");
@@ -155,7 +156,7 @@ async function main(): Promise<void> {
   for (const a of use) if (await a.available()) active.push(a); else console.log(`  ${a.name}: not available (skipped)`);
 
   const battery = tasks.slice(TASK_FROM, TASK_FROM + TASK_LIMIT);
-  console.log(`\nmodel: ${MODEL}  ·  tasks: ${battery.length}  ·  harnesses: ${active.map((a) => a.name).join(", ")}\n`);
+  console.log(`\nmodel: ${MODEL}  ·  tasks: ${battery.length}${REPEAT > 1 ? ` ×${REPEAT}` : ""}  ·  harnesses: ${active.map((a) => a.name).join(", ")}\n`);
 
   const scores: Record<string, Score> = {};
   for (const a of active) scores[a.name] = { pass: 0, total: 0, ms: 0, tokens: 0, ran: true };
@@ -163,15 +164,19 @@ async function main(): Promise<void> {
   for (const task of battery) {
     process.stdout.write(`■ ${task.name}\n`);
     for (const a of active) {
-      const { dir, files } = await setupDir(task);
-      const r = await a.run(dir, join(dir, ".prompt.txt"), task.prompt, files);
-      const check = await task.check(dir).catch((e) => ({ pass: false, detail: String(e) }));
-      const tok = parseTokens(a.name, r.out);
+      let passes = 0, msSum = 0, tokSum = 0, lastDetail = "";
+      for (let k = 0; k < REPEAT; k++) {
+        const { dir, files } = await setupDir(task);
+        const r = await a.run(dir, join(dir, ".prompt.txt"), task.prompt, files);
+        const check = await task.check(dir).catch((e) => ({ pass: false, detail: String(e) }));
+        if (check.pass) passes++; else lastDetail = r.timedOut ? "timeout" : check.detail;
+        msSum += r.ms; tokSum += parseTokens(a.name, r.out);
+        await rm(dir, { recursive: true, force: true }).catch(() => {});
+      }
       const s = scores[a.name]!;
-      s.total++; s.ms += r.ms; s.tokens += tok; if (check.pass) s.pass++;
-      const mark = check.pass ? "PASS" : r.timedOut ? "TIMEOUT" : "fail";
-      process.stdout.write(`    ${a.name.padEnd(8)} ${mark.padEnd(8)} ${(r.ms / 1000).toFixed(0)}s  ${tok ? tok + "tok  " : ""}${check.pass ? "" : "· " + check.detail.slice(0, 55)}\n`);
-      await rm(dir, { recursive: true, force: true }).catch(() => {});
+      s.total += REPEAT; s.pass += passes; s.ms += msSum; s.tokens += tokSum;
+      const rate = `${passes}/${REPEAT}`;
+      process.stdout.write(`    ${a.name.padEnd(8)} ${rate.padEnd(7)} ${(msSum / REPEAT / 1000).toFixed(0)}s avg  ${passes === REPEAT ? "" : "· " + lastDetail.slice(0, 55)}\n`);
     }
   }
 
